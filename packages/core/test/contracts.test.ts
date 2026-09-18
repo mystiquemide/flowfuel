@@ -6,7 +6,7 @@ import {
   runRequestSchema,
   taskHash,
   verifyWalletRequestSchema,
-} from "../src/index.js";
+} from "../src/index";
 
 const CLIENT_ID = "3f6a7b2c-1111-4a2b-8c3d-9e4f5a6b7c8d";
 const WALLET = "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F";
@@ -58,6 +58,8 @@ describe("registerCredentialRequestSchema", () => {
     epoch: 0,
     orbioCredential: `sk-orb-0-${"QUJD".repeat(12)}`,
     consent: true,
+    nonce: CLIENT_ID,
+    signature: SIG,
   };
 
   it("accepts a valid registration", () => {
@@ -113,6 +115,7 @@ describe("nonceRequestSchema", () => {
 describe("verifyWalletRequestSchema", () => {
   it("accepts a 65-byte signature", () => {
     const res = verifyWalletRequestSchema.safeParse({
+      clientId: CLIENT_ID,
       nonce: "3f6a7b2c-1111-4a2b-8c3d-9e4f5a6b7c8d",
       walletAddress: WALLET,
       signature: SIG,
@@ -122,6 +125,7 @@ describe("verifyWalletRequestSchema", () => {
 
   it("rejects a short signature", () => {
     const res = verifyWalletRequestSchema.safeParse({
+      clientId: CLIENT_ID,
       nonce: "3f6a7b2c-1111-4a2b-8c3d-9e4f5a6b7c8d",
       walletAddress: WALLET,
       signature: `0x${"ab".repeat(64)}`,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FlowFuelError } from "@flowfuel/core";
-import { createOrbioClient } from "../src/orbio.js";
+import { createOrbioClient } from "../src/orbio";
 
 const CREDENTIAL = "sk-orb-0-testcredential";
 

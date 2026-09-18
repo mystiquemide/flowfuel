@@ -8,7 +8,7 @@ import {
   transactionHashSchema,
   uuidSchema,
   walletAddressSchema,
-} from "./schemas.js";
+} from "./schemas";
 
 /**
  * Public-safe receipt projection.

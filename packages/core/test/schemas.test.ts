@@ -7,7 +7,7 @@ import {
   runSchema,
   taskSchema,
   walletAddressSchema,
-} from "../src/index.js";
+} from "../src/index";
 
 const CLIENT_A_WALLET = "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F";
 const NOW = "2026-09-18T18:00:00.000Z";

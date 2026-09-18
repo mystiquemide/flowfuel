@@ -9,7 +9,7 @@ import {
   parseEncryptionKey,
   withDecryptedCredential,
   type CredentialAad,
-} from "../src/index.js";
+} from "../src/index";
 
 const KEY = randomBytes(32);
 const OTHER_KEY = randomBytes(32);

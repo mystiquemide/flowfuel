@@ -3,7 +3,7 @@ import {
   publicReceiptSchema,
   toPublicReceipt,
   type ReceiptSource,
-} from "../src/index.js";
+} from "../src/index";
 
 const NOW = "2026-09-18T18:00:00.000Z";
 const TX = "0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed";

@@ -4,7 +4,7 @@ import {
   ORBIO_GATEWAY_BASE_URL,
   ROBINHOOD_CHAIN_ID,
   orbioKeyMessage,
-} from "../src/index.js";
+} from "../src/index";
 
 describe("core constants", () => {
   it("pins the Robinhood chain id", () => {

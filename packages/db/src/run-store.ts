@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
-import type { Db } from "./client.js";
-import { isUniqueViolation } from "./client-store.js";
-import { runs, type RunRow } from "./schema.js";
+import type { Db } from "./client";
+import { isUniqueViolation } from "./client-store";
+import { runs, type RunRow } from "./schema";
 
 export interface CreateRunInput {
   clientId: string;

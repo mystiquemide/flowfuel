@@ -7,8 +7,8 @@ import {
   taskSchema,
   uuidSchema,
   walletAddressSchema,
-} from "./schemas.js";
-import { errorCodeSchema } from "./errors.js";
+} from "./schemas";
+import { errorCodeSchema } from "./errors";
 
 export const signatureSchema = z
   .string()
@@ -27,6 +27,7 @@ export const nonceResponseSchema = z.strictObject({
 export type NonceResponse = z.infer<typeof nonceResponseSchema>;
 
 export const verifyWalletRequestSchema = z.strictObject({
+  clientId: uuidSchema,
   nonce: uuidSchema,
   walletAddress: walletAddressSchema,
   signature: signatureSchema,
@@ -44,9 +45,19 @@ export const registerCredentialRequestSchema = z.strictObject({
     .max(512)
     .regex(ORBIO_CREDENTIAL_PATTERN, "Invalid Orbio credential shape"),
   consent: z.literal(true),
+  nonce: uuidSchema,
+  signature: signatureSchema,
 });
 export type RegisterCredentialRequest = z.infer<
   typeof registerCredentialRequestSchema
+>;
+
+export const credentialStatusResponseSchema = z.strictObject({
+  status: z.enum(["ready", "unfunded"]),
+  balance: decimalStringSchema.nullable(),
+});
+export type CredentialStatusResponse = z.infer<
+  typeof credentialStatusResponseSchema
 >;
 
 export const runRequestSchema = z.strictObject({

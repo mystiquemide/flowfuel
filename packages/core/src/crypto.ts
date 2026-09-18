@@ -4,7 +4,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { sha256Hex } from "./hash.js";
+import { sha256Hex } from "./hash";
 
 const VERSION = 1;
 const KEY_LEN = 32;

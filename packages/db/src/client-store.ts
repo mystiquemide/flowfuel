@@ -1,12 +1,12 @@
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { FlowFuelError } from "@flowfuel/core";
-import type { Db } from "./client.js";
+import type { Db } from "./client";
 import {
   clients,
   walletNonces,
   type ClientRow,
   type WalletNonceRow,
-} from "./schema.js";
+} from "./schema";
 
 export interface CreateClientInput {
   slug: string;

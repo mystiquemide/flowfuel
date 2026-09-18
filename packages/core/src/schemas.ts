@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getAddress } from "viem";
-import { ROBINHOOD_CHAIN_ID } from "./constants.js";
+import { ROBINHOOD_CHAIN_ID } from "./constants";
 
 export const uuidSchema = z.uuid();
 

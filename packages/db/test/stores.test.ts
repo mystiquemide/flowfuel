@@ -8,7 +8,7 @@ import {
   createDb,
   createRunStore,
   databaseUrl,
-} from "../src/index.js";
+} from "../src/index";
 
 const { db, sql } = createDb(databaseUrl());
 const clientStore = createClientStore(db);

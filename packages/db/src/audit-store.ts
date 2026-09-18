@@ -1,8 +1,8 @@
-import type { Db } from "./client.js";
+import type { Db } from "./client";
 import {
   auditEvents,
   type AuditEventRow,
-} from "./schema.js";
+} from "./schema";
 
 export interface AppendAuditInput {
   clientId: string | null;

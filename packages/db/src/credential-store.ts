@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "./client.js";
+import type { Db } from "./client";
 import {
   clientCredentials,
   type ClientCredentialRow,
-} from "./schema.js";
+} from "./schema";
 
 export interface SaveCredentialInput {
   clientId: string;

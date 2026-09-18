@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FlowFuelError, mapUpstreamError } from "../src/index.js";
+import { FlowFuelError, mapUpstreamError } from "../src/index";
 
 describe("mapUpstreamError", () => {
   it("maps 401 with an unverified credential to CLIENT_UNFUNDED", () => {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Task } from "./schemas.js";
+import type { Task } from "./schemas";
 
 /**
  * Server-side only. The broker hashes the canonical task before resolving a
