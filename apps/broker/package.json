@@ -14,5 +14,8 @@
   "dependencies": {
     "@flowfuel/core": "workspace:*",
     "@flowfuel/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1"
   }
 }
