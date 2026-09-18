@@ -98,7 +98,13 @@ export const modelSchema = z.enum(MODEL_ALLOWLIST);
 export type AllowedModel = z.infer<typeof modelSchema>;
 
 export const MAX_TASK_INPUT_CHARS = 8_000;
-export const MAX_OUTPUT_TOKENS = 1_024;
+/**
+ * Hard contract bound on run output size. The n8n reference workflow clamps
+ * tighter (1024) as the task-level bound; this bound keeps any direct broker
+ * call finite while still letting Orbio's own balance pre-authorization
+ * reject a request that exceeds the client's allowance (upstream 402).
+ */
+export const MAX_OUTPUT_TOKENS = 8_192;
 
 export const taskSchema = z.object({
   type: taskTypeSchema,

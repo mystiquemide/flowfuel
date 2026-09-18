@@ -293,6 +293,11 @@ describe("executeRun", () => {
     const row = await runStore.getById(res.runId);
     expect(row?.status).toBe("quota_exceeded");
     expect(row?.generationId).toBeNull();
+    expect(row?.costUsd).toBeNull();
+    expect(row?.balanceAfter).toBeNull();
+    // The balance read before the rejected call is kept as evidence that
+    // the rejection left the client's balance untouched.
+    expect(row?.balanceBefore).toBe("0.009726");
   });
 
   it("treats a 401 on a stored credential as revoked", async () => {

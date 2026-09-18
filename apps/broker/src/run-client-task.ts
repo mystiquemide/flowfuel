@@ -224,6 +224,7 @@ async function executeLocked(
   }
 
   const verified = credential.verifiedAt != null;
+  let balanceBeforeSeen: string | null = null;
 
   try {
     const outcome = await withDecryptedCredential(
@@ -239,6 +240,7 @@ async function executeLocked(
         const plaintext = blob.toString("utf8");
         const context = { credentialPreviouslyVerified: verified };
         const before = await deps.orbio.getKeyInfo(plaintext, context);
+        balanceBeforeSeen = before.balance.available;
         const completion = await deps.orbio.createChatCompletion(
           plaintext,
           {
@@ -326,6 +328,7 @@ async function executeLocked(
     const failed = await finish(statusForError(mapped.code), {
       errorCode: mapped.code,
       upstreamStatus: mapped.upstreamStatus,
+      balanceBefore: balanceBeforeSeen,
     });
     return {
       runId: failed.id,

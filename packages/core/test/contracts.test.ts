@@ -30,13 +30,13 @@ describe("runRequestSchema", () => {
     expect(res.success).toBe(false);
   });
 
-  it.each([0, -1, 1025, 5000])("rejects maxOutputTokens %i", (n) => {
+  it.each([0, -1, 8193, 20000])("rejects maxOutputTokens %i", (n) => {
     const res = runRequestSchema.safeParse({ ...valid, maxOutputTokens: n });
     expect(res.success).toBe(false);
   });
 
   it("accepts the output bound", () => {
-    const res = runRequestSchema.safeParse({ ...valid, maxOutputTokens: 1024 });
+    const res = runRequestSchema.safeParse({ ...valid, maxOutputTokens: 8192 });
     expect(res.success).toBe(true);
   });
 
