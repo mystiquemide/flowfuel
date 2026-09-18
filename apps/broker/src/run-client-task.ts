@@ -1,6 +1,7 @@
 import {
   FlowFuelError,
   idempotencyKey,
+  reconcileBalances,
   taskHash,
   withDecryptedCredential,
   type AllowedModel,
@@ -74,6 +75,7 @@ const STATUS_AUDIT: Record<Exclude<RunStatus, "running">, AuditEventType> = {
   quota_exceeded: "run_quota_exceeded",
   provider_failed: "run_provider_failed",
   validation_failed: "run_validation_failed",
+  reconciliation_failed: "run_reconciliation_failed",
 };
 
 function statusForError(code: string): Exclude<RunStatus, "running"> {
@@ -250,18 +252,24 @@ async function executeLocked(
           context,
         );
         let balanceAfter: string | null = null;
+        let afterReadError: FlowFuelError | null = null;
         try {
           const after = await deps.orbio.getKeyInfo(plaintext, context);
           balanceAfter = after.balance.available;
-        } catch {
+        } catch (error) {
           // The completion already charged the client. A failed balance
-          // re-read must not hide the charge, so the receipt keeps a null.
+          // re-read means the charge cannot be verified, which must never
+          // present as a clean success.
+          afterReadError =
+            error instanceof FlowFuelError
+              ? error
+              : new FlowFuelError("PROVIDER_FAILED", "Balance re-read failed");
         }
-        return { before, completion, balanceAfter };
+        return { before, completion, balanceAfter, afterReadError };
       },
     );
 
-    const succeeded = await finish("succeeded", {
+    const fields = {
       generationId: outcome.completion.generationId,
       balanceBefore: outcome.before.balance.available,
       balanceAfter: outcome.balanceAfter,
@@ -269,7 +277,40 @@ async function executeLocked(
       promptTokens: outcome.completion.promptTokens,
       completionTokens: outcome.completion.completionTokens,
       upstreamStatus: outcome.completion.upstreamStatus,
-    });
+    };
+
+    const reconciled =
+      outcome.afterReadError === null &&
+      outcome.balanceAfter !== null &&
+      outcome.completion.generationId.length > 0 &&
+      outcome.completion.costUsd != null &&
+      reconcileBalances(
+        fields.balanceBefore,
+        outcome.balanceAfter,
+        outcome.completion.costUsd,
+      );
+
+    if (!reconciled) {
+      const failed = await finish("reconciliation_failed", {
+        ...fields,
+        errorCode: "RECONCILIATION_FAILED",
+        upstreamStatus:
+          outcome.afterReadError?.upstreamStatus ?? fields.upstreamStatus,
+      });
+      return {
+        runId: failed.id,
+        status: "reconciliation_failed",
+        taskHash: hash,
+        error: {
+          code: "RECONCILIATION_FAILED",
+          upstreamStatus:
+            outcome.afterReadError?.upstreamStatus ?? fields.upstreamStatus,
+          action: "Investigate the run. Do not treat it as successful.",
+        },
+      };
+    }
+
+    const succeeded = await finish("succeeded", fields);
 
     return {
       runId: succeeded.id,

@@ -43,10 +43,13 @@ interface OrbioSpy {
 
 function makeOrbio(overrides: Partial<{
   keyInfoError: FlowFuelError;
+  keyInfoErrorOnCall: number;
   completionError: FlowFuelError;
-  balance: string;
+  balances: string[];
   delay: number;
 }> = {}): OrbioSpy {
+  let keyInfoCalls = 0;
+  const balances = overrides.balances ?? ["0.009726", "0.009700"];
   const spy: OrbioSpy = {
     keyInfoCredentials: [],
     completionCredentials: [],
@@ -55,15 +58,23 @@ function makeOrbio(overrides: Partial<{
       listModels: async () => [],
       getKeyInfo: async (credential: string) => {
         spy.keyInfoCredentials.push(credential);
+        keyInfoCalls += 1;
         if (overrides.keyInfoError) throw overrides.keyInfoError;
+        if (overrides.keyInfoErrorOnCall === keyInfoCalls) {
+          throw new FlowFuelError("PROVIDER_FAILED", "key read failed", {
+            upstreamStatus: 503,
+          });
+        }
         if (overrides.delay) {
           await new Promise((r) => setTimeout(r, overrides.delay));
         }
+        const available =
+          balances[Math.min(keyInfoCalls - 1, balances.length - 1)]!;
         return {
           balance: {
-            available: overrides.balance ?? "0.009726",
+            available,
             used: "0.000274",
-            available_micro_usd: 9726,
+            available_micro_usd: Math.round(Number(available) * 1e6),
             used_micro_usd: 274,
           },
         };
@@ -170,7 +181,7 @@ describe("executeRun", () => {
     expect(res.receipt.clientWallet).toBe(clientA.walletAddress);
     expect(res.receipt.generationId).toBe("gen-test-1");
     expect(res.receipt.balanceBefore).toBe("0.009726");
-    expect(res.receipt.balanceAfter).toBe("0.009726");
+    expect(res.receipt.balanceAfter).toBe("0.009700");
     expect(res.receipt.costUsd).toBe("0.000026");
 
     const row = await runStore.getById(res.runId);
@@ -314,6 +325,67 @@ describe("executeRun", () => {
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(orbio.completions).toBe(0);
+  });
+
+  it("marks a balance mismatch as reconciliation_failed, not success", async () => {
+    const clientA = await makeClient("a");
+    await storeCredential(clientA, CLIENT_A_SECRET);
+    // Delta is 40 micro-USD but the reported cost is 26: the receipt cannot
+    // reconcile, so the run must not present as succeeded.
+    const orbio = makeOrbio({ balances: ["0.009726", "0.009686"] });
+
+    const res = await executeRun(deps(orbio.client), runRequest(clientA, "exec-rec1"));
+
+    expect(res.status).toBe("reconciliation_failed");
+    if (res.status === "succeeded") return;
+    expect(res.error.code).toBe("RECONCILIATION_FAILED");
+    const row = await runStore.getById(res.runId);
+    expect(row?.status).toBe("reconciliation_failed");
+    // The charge evidence is preserved for investigation.
+    expect(row?.generationId).toBe("gen-test-1");
+    expect(row?.costUsd).toBe("0.000026");
+  });
+
+  it("marks a failed balance-after read as reconciliation_failed", async () => {
+    const clientA = await makeClient("a");
+    await storeCredential(clientA, CLIENT_A_SECRET);
+    const orbio = makeOrbio({ keyInfoErrorOnCall: 2 });
+
+    const res = await executeRun(deps(orbio.client), runRequest(clientA, "exec-rec2"));
+
+    expect(res.status).toBe("reconciliation_failed");
+    if (res.status === "succeeded") return;
+    expect(res.error.code).toBe("RECONCILIATION_FAILED");
+    expect(res.error.upstreamStatus).toBe(503);
+    const row = await runStore.getById(res.runId);
+    expect(row?.status).toBe("reconciliation_failed");
+  });
+
+  it("keeps every terminal run's receipt consistent through toPublicReceipt", async () => {
+    const { toPublicReceipt } = await import("@flowfuel/core");
+    const clientA = await makeClient("a");
+    await storeCredential(clientA, CLIENT_A_SECRET);
+    const orbio = makeOrbio({ balances: ["0.009726", "0.009686"] });
+
+    const res = await executeRun(deps(orbio.client), runRequest(clientA, "exec-rec3"));
+    const row = await runStore.getById(res.runId);
+    const receipt = toPublicReceipt({
+      id: row!.id,
+      clientWallet: clientA.walletAddress,
+      workflowRunId: row!.workflowRunId,
+      taskHash: row!.taskHash,
+      model: row!.model,
+      status: row!.status,
+      generationId: row!.generationId,
+      balanceBefore: row!.balanceBefore,
+      costUsd: row!.costUsd,
+      balanceAfter: row!.balanceAfter,
+      upstreamStatus: row!.upstreamStatus,
+      startedAt: row!.startedAt.toISOString(),
+      completedAt: row!.completedAt?.toISOString() ?? null,
+    });
+    expect(receipt.status).toBe("reconciliation_failed");
+    expect(receipt.reconciled).toBe(false);
   });
 
   it("writes an audit event for every terminal run", async () => {

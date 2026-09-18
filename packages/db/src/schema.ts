@@ -39,6 +39,7 @@ export const runStatusEnum = pgEnum("run_status", [
   "quota_exceeded",
   "provider_failed",
   "validation_failed",
+  "reconciliation_failed",
 ]);
 
 export const auditActorTypeEnum = pgEnum("audit_actor_type", [

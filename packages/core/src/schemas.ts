@@ -113,6 +113,7 @@ export const runStatusSchema = z.enum([
   "quota_exceeded",
   "provider_failed",
   "validation_failed",
+  "reconciliation_failed",
 ]);
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
@@ -157,6 +158,7 @@ export const AUDIT_EVENT_TYPES = [
   "run_quota_exceeded",
   "run_provider_failed",
   "run_validation_failed",
+  "run_reconciliation_failed",
 ] as const;
 export const auditEventTypeSchema = z.enum(AUDIT_EVENT_TYPES);
 export type AuditEventType = z.infer<typeof auditEventTypeSchema>;

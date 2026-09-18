@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  FlowFuelError,
   publicReceiptSchema,
+  reconcileBalances,
+  toMicroUsd,
   toPublicReceipt,
   type ReceiptSource,
 } from "../src/index";
@@ -28,10 +31,14 @@ describe("toPublicReceipt", () => {
   it("builds a valid public receipt", () => {
     const receipt = toPublicReceipt(sourceRun, TX);
     expect(receipt.status).toBe("succeeded");
+    expect(receipt.reconciled).toBe(true);
     expect(receipt.clientWallet).toBe(
       "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F",
     );
     expect(receipt.activationTxHash).toBe(TX);
+    expect(receipt.activationExplorerUrl).toBe(
+      `https://robin.etherscan.io/tx/${TX}`,
+    );
     expect(receipt.source).toBe("live");
   });
 
@@ -39,6 +46,7 @@ describe("toPublicReceipt", () => {
     const allowed = new Set([
       "runId",
       "status",
+      "reconciled",
       "clientWallet",
       "workflowRunId",
       "taskHash",
@@ -49,6 +57,7 @@ describe("toPublicReceipt", () => {
       "balanceAfter",
       "upstreamStatus",
       "activationTxHash",
+      "activationExplorerUrl",
       "startedAt",
       "completedAt",
       "source",
@@ -58,12 +67,80 @@ describe("toPublicReceipt", () => {
       expect(allowed.has(key)).toBe(true);
     }
   });
+
+  it("throws reconciliation_failed when a succeeded run's arithmetic is off", () => {
+    expect(() =>
+      toPublicReceipt({ ...sourceRun, balanceAfter: "0.009500" }),
+    ).toThrowError(FlowFuelError);
+    try {
+      toPublicReceipt({ ...sourceRun, balanceAfter: "0.009500" });
+    } catch (error) {
+      expect((error as FlowFuelError).code).toBe("RECONCILIATION_FAILED");
+    }
+  });
+
+  it("throws when a succeeded run lacks a generation ID or cost", () => {
+    expect(() =>
+      toPublicReceipt({ ...sourceRun, generationId: null }),
+    ).toThrowError(FlowFuelError);
+    expect(() => toPublicReceipt({ ...sourceRun, costUsd: null })).toThrowError(
+      FlowFuelError,
+    );
+    expect(() =>
+      toPublicReceipt({ ...sourceRun, balanceAfter: null }),
+    ).toThrowError(FlowFuelError);
+  });
+
+  it("projects a failed run as unreconciled without throwing", () => {
+    const receipt = toPublicReceipt({
+      ...sourceRun,
+      status: "client_unfunded",
+      generationId: null,
+      balanceBefore: null,
+      costUsd: null,
+      balanceAfter: null,
+      upstreamStatus: 401,
+    });
+    expect(receipt.status).toBe("client_unfunded");
+    expect(receipt.reconciled).toBe(false);
+    expect(receipt.generationId).toBeNull();
+  });
+
+  it("projects a reconciliation_failed run honestly", () => {
+    const receipt = toPublicReceipt({
+      ...sourceRun,
+      status: "reconciliation_failed",
+      balanceAfter: "0.009500",
+    });
+    expect(receipt.status).toBe("reconciliation_failed");
+    expect(receipt.reconciled).toBe(false);
+  });
+});
+
+describe("reconcileBalances", () => {
+  it("accepts an exact micro-USD match", () => {
+    expect(reconcileBalances("0.009801", "0.009775", "0.000026")).toBe(true);
+    expect(reconcileBalances("0.009801", "0.009775", 0.000026)).toBe(true);
+  });
+
+  it("rejects any imbalance", () => {
+    expect(reconcileBalances("0.009801", "0.009774", "0.000026")).toBe(false);
+    expect(reconcileBalances("0.009801", "0.009801", "0.000026")).toBe(false);
+    expect(reconcileBalances("1.000000", "0.999999", "0.000002")).toBe(false);
+  });
+
+  it("converts decimal USD to integer micro-USD", () => {
+    expect(toMicroUsd("0.009801")).toBe(9801);
+    expect(toMicroUsd(0.000026)).toBe(26);
+    expect(toMicroUsd("1.000000")).toBe(1_000_000);
+  });
 });
 
 describe("publicReceiptSchema", () => {
   const valid = {
     runId: "9c8b7a6d-2222-4b3c-9d4e-1f2a3b4c5d6e",
     status: "succeeded",
+    reconciled: true,
     clientWallet: "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F",
     workflowRunId: "n8n-exec-246",
     taskHash: "a".repeat(64),
@@ -74,6 +151,7 @@ describe("publicReceiptSchema", () => {
     balanceAfter: "0.009775",
     upstreamStatus: 200,
     activationTxHash: TX,
+    activationExplorerUrl: `https://robin.etherscan.io/tx/${TX}`,
     startedAt: NOW,
     completedAt: NOW,
     source: "live",

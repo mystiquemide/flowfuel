@@ -101,6 +101,7 @@ export const runFailureStatusSchema = z.enum([
   "quota_exceeded",
   "provider_failed",
   "validation_failed",
+  "reconciliation_failed",
 ]);
 
 export const runFailureResponseSchema = z.strictObject({

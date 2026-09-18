@@ -1,5 +1,6 @@
 import { createOrbioClient, type RunDeps } from "@flowfuel/broker";
 import {
+  createActivationStore,
   createAuditStore,
   createClientStore,
   createCredentialStore,
@@ -35,13 +36,16 @@ export function registrationDeps(): RegistrationDeps {
   };
 }
 
-export function runDeps(): RunDeps {
+export function runDeps(): RunDeps & {
+  activations: ReturnType<typeof createActivationStore>;
+} {
   const database = db();
   return {
     clients: createClientStore(database),
     credentials: createCredentialStore(database),
     runs: createRunStore(database),
     audit: createAuditStore(database),
+    activations: createActivationStore(database),
     orbio: createOrbioClient({ baseUrl: orbioBaseUrlFromEnv() }),
     encryptionKey: credentialEncryptionKey(),
     chainId: ROBINHOOD_CHAIN_ID,

@@ -5,6 +5,12 @@ export const CREDIT_CONTRACT_ADDRESS =
 
 export const ORBIO_GATEWAY_BASE_URL = "https://www.orbio.so/api/v1";
 
+export const ROBINHOOD_EXPLORER_BASE_URL = "https://robin.etherscan.io";
+
+export function explorerTxUrl(transactionHash: string): string {
+  return `${ROBINHOOD_EXPLORER_BASE_URL}/tx/${transactionHash}`;
+}
+
 export function orbioKeyMessage(chainId: number, epoch: number): string {
   return `Orbio API key · chain ${chainId} · epoch ${epoch}`;
 }
