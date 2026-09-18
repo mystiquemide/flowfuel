@@ -84,7 +84,35 @@ Without those primitives, the agency returns to provider accounts, shared fundin
 
 Copy `.env.example` to `.env.local` and provide independent application, database, encryption, and workflow secrets. Never reuse a wallet private key as an application secret.
 
-The implementation will include one importable n8n workflow and verified clean-clone commands. No private wallet material belongs in the repository.
+## Run it
+
+Requirements: Node 24, pnpm, Docker.
+
+```bash
+pnpm install
+docker compose up -d postgres
+cp .env.example .env.local   # fill in DATABASE_URL, keys, tokens
+pnpm -F @flowfuel/db db:migrate
+pnpm -F @flowfuel/broker dev # broker on :4010
+pnpm dev                     # web app on :3000
+```
+
+Start n8n with `docker compose up -d n8n`, then import `n8n/workflows/client-funded-agent.json`. The workflow calls `POST /api/runs` with the shared `FLOWFUEL_WORKFLOW_TOKEN`; set `FLOWFUEL_BROKER_URL` and `FLOWFUEL_WORKFLOW_TOKEN` in the n8n container environment.
+
+## Repository layout
+
+- `apps/broker` — standalone run broker (node:http, port 4010)
+- `apps/web` — Next.js app: client onboarding, run API, public receipts
+- `packages/core` — schemas, error mapping, encryption, receipt logic
+- `packages/db` — Drizzle schema, stores, migrations
+- `n8n/workflows` — the importable reference workflow
+
+## API surface
+
+- `POST /api/runs` — execute a client task (Bearer workflow token)
+- `GET /api/runs/[runId]` — run status (Bearer workflow token)
+- `GET /api/runs/[runId]/receipt` — public proof receipt, no token
+- `GET /healthz` — broker liveness
 
 ## License
 
