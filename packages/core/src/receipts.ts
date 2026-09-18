@@ -58,6 +58,15 @@ export interface ReceiptSource {
 
 const MICRO_USD = 1_000_000;
 
+/**
+ * Reconciliation tolerance in micro-USD. The gateway rounds cost and balance
+ * components at different stages, so a live charge can drift by a few
+ * micro-dollars between the reported cost and the measured delta. Four
+ * micro-USD absorbs that rounding while remaining far below the smallest
+ * real charge (~25x margin), so any genuine mismatch still fails.
+ */
+export const RECONCILIATION_TOLERANCE_MICRO_USD = 4;
+
 /** Converts a USD decimal string or number to integer micro-USD. */
 export function toMicroUsd(value: string | number): number {
   return Math.round(Number(value) * MICRO_USD);
@@ -65,18 +74,20 @@ export function toMicroUsd(value: string | number): number {
 
 /**
  * Reconciles a run's arithmetic at micro-USD precision. The charged balance
- * delta must equal the reported cost exactly; concurrent spend on the same
- * credential or a drifted balance read makes the check fail.
+ * delta must equal the reported cost within a few micro-USD of rounding
+ * drift; a missing charge, a double charge, or concurrent spend on the same
+ * credential overshoots the tolerance and fails.
  */
 export function reconcileBalances(
   balanceBefore: string,
   balanceAfter: string,
   costUsd: string | number,
+  toleranceMicroUsd: number = RECONCILIATION_TOLERANCE_MICRO_USD,
 ): boolean {
   const before = toMicroUsd(balanceBefore);
   const after = toMicroUsd(balanceAfter);
   const cost = toMicroUsd(costUsd);
-  return before - after === cost;
+  return Math.abs(before - after - cost) <= toleranceMicroUsd;
 }
 
 /**

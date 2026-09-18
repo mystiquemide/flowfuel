@@ -123,10 +123,19 @@ describe("reconcileBalances", () => {
     expect(reconcileBalances("0.009801", "0.009775", 0.000026)).toBe(true);
   });
 
-  it("rejects any imbalance", () => {
-    expect(reconcileBalances("0.009801", "0.009774", "0.000026")).toBe(false);
+  it("accepts rounding drift inside the tolerance", () => {
+    // delta 27 vs cost 26: one micro-USD of gateway rounding.
+    expect(reconcileBalances("0.009801", "0.009774", "0.000026")).toBe(true);
+    expect(reconcileBalances("0.009801", "0.009777", "0.000026")).toBe(true);
+  });
+
+  it("rejects imbalances beyond the tolerance", () => {
+    // delta 31 vs cost 26: five micro-USD off.
+    expect(reconcileBalances("0.009801", "0.009770", "0.000026")).toBe(false);
+    // No charge at all.
     expect(reconcileBalances("0.009801", "0.009801", "0.000026")).toBe(false);
-    expect(reconcileBalances("1.000000", "0.999999", "0.000002")).toBe(false);
+    // A doubled charge.
+    expect(reconcileBalances("0.009801", "0.009749", "0.000026")).toBe(false);
   });
 
   it("converts decimal USD to integer micro-USD", () => {

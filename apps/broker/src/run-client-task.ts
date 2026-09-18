@@ -23,6 +23,7 @@ import type {
 } from "@flowfuel/db";
 
 import type { OrbioClient } from "./orbio";
+import { createRateLimiter, RUN_RATE_LIMIT, type RateLimiter } from "./rate-limit";
 
 export interface RunDeps {
   clients: Pick<ReturnType<typeof createClientStore>, "getById">;
@@ -35,6 +36,7 @@ export interface RunDeps {
   orbio: OrbioClient;
   encryptionKey: Buffer;
   chainId: number;
+  rateLimiter?: RateLimiter;
 }
 
 const TASK_PROMPTS: Record<RunRequest["task"]["type"], string> = {
@@ -47,6 +49,7 @@ const TASK_PROMPTS: Record<RunRequest["task"]["type"], string> = {
 // need a database advisory lock instead.
 const clientLocks = new Map<string, Promise<unknown>>();
 const inflight = new Map<string, Promise<RunResponse>>();
+const defaultRateLimiter = createRateLimiter(RUN_RATE_LIMIT);
 
 async function withClientLock<T>(
   clientId: string,
@@ -174,6 +177,15 @@ async function executeLocked(
   // Re-check inside the lock: a queued duplicate must not create a second row.
   const existing = await deps.runs.getByIdempotencyKey(key);
   if (existing) return responseFromRun(existing, client);
+
+  const limiter = deps.rateLimiter ?? defaultRateLimiter;
+  if (!limiter.allow(request.clientId)) {
+    throw new FlowFuelError(
+      "RATE_LIMITED",
+      "Run rate limit exceeded for this client",
+      { action: "Wait for the rate limit window and retry." },
+    );
+  }
 
   const run = await deps.runs.create({
     clientId: request.clientId,

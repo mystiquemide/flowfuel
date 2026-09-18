@@ -1,4 +1,3 @@
-import { bearerToken, verifyWorkflowToken } from "@flowfuel/broker";
 import {
   FlowFuelError,
   toPublicReceipt,
@@ -6,27 +5,22 @@ import {
   type ReceiptSource,
 } from "@flowfuel/core";
 
-import { workflowTokenFromEnv } from "../../../../../lib/env";
 import { errorResponse } from "../../../../../lib/http";
 import { runDeps } from "../../../../../lib/services";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Public proof receipt. The response body passes through toPublicReceipt,
+ * whose strict allowlist is the only thing between a run row and the
+ * outside world, so no workflow token is required.
+ */
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ runId: string }> },
 ) {
   try {
-    if (
-      !verifyWorkflowToken(
-        bearerToken(request.headers.get("authorization")),
-        workflowTokenFromEnv(),
-      )
-    ) {
-      throw new FlowFuelError("UNAUTHORIZED", "Invalid workflow token");
-    }
-
     const { runId } = await params;
     const id = uuidSchema.parse(runId);
     const deps = runDeps();

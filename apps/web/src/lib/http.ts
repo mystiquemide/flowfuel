@@ -34,9 +34,19 @@ export function errorResponse(err: unknown): Response {
   );
 }
 
+export const MAX_BODY_BYTES = 64 * 1024;
+
 export async function parseJson(request: Request): Promise<unknown> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (declared > MAX_BODY_BYTES) {
+    throw new FlowFuelError("VALIDATION_FAILED", "Request body too large");
+  }
+  const text = await request.text();
+  if (text.length > MAX_BODY_BYTES) {
+    throw new FlowFuelError("VALIDATION_FAILED", "Request body too large");
+  }
   try {
-    return await request.json();
+    return JSON.parse(text);
   } catch {
     throw new FlowFuelError("VALIDATION_FAILED", "Request body must be JSON");
   }
