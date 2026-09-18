@@ -1,0 +1,32 @@
+{
+  "name": "flowfuel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @flowfuel/web dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "n8n:up": "docker compose up -d n8n",
+    "clean": "pnpm -r exec rm -rf dist .next node_modules"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.4",
+    "typescript-eslint": "8.69.0",
+    "vitest": "5.0.0",
+    "@types/node": "22.20.1",
+    "tsx": "4.23.13"
+  }
+}
+

@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16.14-alpine
+    environment:
+      POSTGRES_USER: flowfuel
+      POSTGRES_PASSWORD: flowfuel
+      POSTGRES_DB: flowfuel
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowfuel -d flowfuel"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  n8n:
+    image: n8nio/n8n:1.123.77
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: UTC
+      DB_TYPE: sqlite
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8ndata:/home/node/.n8n
+
+volumes:
+  pgdata:
+  n8ndata:

@@ -1,0 +1,49 @@
+:root {
+  --fuel: #d6ff55;
+  --fuel-hover: #c2ee3d;
+  --ink: #edebe5;
+  --ink-muted: #96938b;
+  --canvas: #0c0d0d;
+  --surface: #141615;
+  --surface-raised: #1b1e1c;
+  --border: #4a4e47;
+  --success: #66d19e;
+  --warning: #f0b85a;
+  --danger: #ef746f;
+  --link: #afc7ff;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--fuel);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
