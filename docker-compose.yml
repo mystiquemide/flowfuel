@@ -24,6 +24,13 @@ services:
       N8N_SECURE_COOKIE: "false"
       GENERIC_TIMEZONE: UTC
       DB_TYPE: sqlite
+      # Token n8n presents to POST /api/runs. The workflow JSON reads it as
+      # $env.FLOWFUEL_WORKFLOW_TOKEN so no secret lives in the workflow file.
+      FLOWFUEL_WORKFLOW_TOKEN: ${FLOWFUEL_WORKFLOW_TOKEN:-}
+      # Broker address reachable from inside the container.
+      FLOWFUEL_BROKER_URL: ${FLOWFUEL_BROKER_URL:-http://host.docker.internal:4010}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "5678:5678"
     volumes:

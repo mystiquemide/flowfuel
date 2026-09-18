@@ -10,6 +10,10 @@ import {
   databaseUrl,
 } from "../src/index";
 
+// Integration tests run against a dedicated database so the dev data survives.
+process.env.DATABASE_URL =
+  "postgres://flowfuel:flowfuel@localhost:55432/flowfuel_test";
+
 const { db, sql } = createDb(databaseUrl());
 const clientStore = createClientStore(db);
 const credentialStore = createCredentialStore(db);

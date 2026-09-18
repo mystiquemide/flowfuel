@@ -89,6 +89,7 @@ function receiptFromRun(run: RunRow, client: ClientRow): RunReceiptSummary {
     clientWallet: client.walletAddress as `0x${string}`,
     generationId: run.generationId,
     model: run.model as AllowedModel,
+    taskHash: run.taskHash,
     costUsd: run.costUsd,
     balanceBefore: run.balanceBefore,
     balanceAfter: run.balanceAfter,
@@ -108,6 +109,7 @@ function responseFromRun(run: RunRow, client: ClientRow): RunResponse {
   return {
     runId: run.id,
     status: status as Exclude<RunStatus, "running" | "succeeded">,
+    taskHash: run.taskHash,
     error: {
       code: (run.errorCode as ErrorCode | null) ?? "PROVIDER_FAILED",
       upstreamStatus: run.upstreamStatus,
@@ -210,6 +212,7 @@ async function executeLocked(
     return {
       runId: failed.id,
       status: "client_unfunded",
+      taskHash: hash,
       error: {
         code: "CLIENT_UNFUNDED",
         upstreamStatus: null,
@@ -286,6 +289,7 @@ async function executeLocked(
     return {
       runId: failed.id,
       status: failed.status as Exclude<RunStatus, "running" | "succeeded">,
+      taskHash: hash,
       error: {
         code: mapped.code,
         upstreamStatus: mapped.upstreamStatus,

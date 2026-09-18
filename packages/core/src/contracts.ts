@@ -4,6 +4,7 @@ import {
   MAX_OUTPUT_TOKENS,
   modelSchema,
   noncePurposeSchema,
+  sha256HexSchema,
   taskSchema,
   uuidSchema,
   walletAddressSchema,
@@ -73,6 +74,7 @@ export const runReceiptSummarySchema = z.strictObject({
   clientWallet: walletAddressSchema,
   generationId: z.string().min(1).max(128).nullable(),
   model: modelSchema,
+  taskHash: sha256HexSchema,
   costUsd: decimalStringSchema.nullable(),
   balanceBefore: decimalStringSchema.nullable(),
   balanceAfter: decimalStringSchema.nullable(),
@@ -104,6 +106,7 @@ export const runFailureStatusSchema = z.enum([
 export const runFailureResponseSchema = z.strictObject({
   runId: uuidSchema,
   status: runFailureStatusSchema,
+  taskHash: sha256HexSchema,
   error: apiErrorSchema,
 });
 export type RunFailureResponse = z.infer<typeof runFailureResponseSchema>;
