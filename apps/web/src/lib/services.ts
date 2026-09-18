@@ -1,12 +1,14 @@
-import { createOrbioClient } from "@flowfuel/broker";
+import { createOrbioClient, type RunDeps } from "@flowfuel/broker";
 import {
   createAuditStore,
   createClientStore,
   createCredentialStore,
   createDb,
+  createRunStore,
   type Db,
   type Sql,
 } from "@flowfuel/db";
+import { ROBINHOOD_CHAIN_ID } from "@flowfuel/core";
 
 import {
   credentialEncryptionKey,
@@ -30,5 +32,18 @@ export function registrationDeps(): RegistrationDeps {
     audit: createAuditStore(database),
     orbio: createOrbioClient({ baseUrl: orbioBaseUrlFromEnv() }),
     encryptionKey: credentialEncryptionKey(),
+  };
+}
+
+export function runDeps(): RunDeps {
+  const database = db();
+  return {
+    clients: createClientStore(database),
+    credentials: createCredentialStore(database),
+    runs: createRunStore(database),
+    audit: createAuditStore(database),
+    orbio: createOrbioClient({ baseUrl: orbioBaseUrlFromEnv() }),
+    encryptionKey: credentialEncryptionKey(),
+    chainId: ROBINHOOD_CHAIN_ID,
   };
 }

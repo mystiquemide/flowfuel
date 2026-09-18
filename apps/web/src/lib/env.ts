@@ -20,3 +20,11 @@ export function credentialEncryptionKey(): Buffer {
   cachedKey = parseEncryptionKey(hex);
   return cachedKey;
 }
+
+export function workflowTokenFromEnv(): string {
+  const token = process.env.FLOWFUEL_WORKFLOW_TOKEN;
+  if (!token) {
+    throw new Error("FLOWFUEL_WORKFLOW_TOKEN is not set");
+  }
+  return token;
+}
