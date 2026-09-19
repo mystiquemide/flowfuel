@@ -79,6 +79,7 @@ function deps(orbio: OrbioClient, rateLimiter?: RunDeps["rateLimiter"]): RunDeps
     chainId: ROBINHOOD_CHAIN_ID,
     rateLimiter,
     inspectWebsite: async () => ({ url: "https://example.com/", title: "Example", text: "Example company" }),
+    settleDelay: async () => {},
   };
 }
 

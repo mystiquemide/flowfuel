@@ -46,7 +46,7 @@ function textFromHtml(html: string): string {
     .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 20_000);
+    .slice(0, 6_000);
 }
 
 export async function inspectPublicWebsite(rawUrl: string): Promise<{

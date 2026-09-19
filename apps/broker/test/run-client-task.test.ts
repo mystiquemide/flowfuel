@@ -124,6 +124,7 @@ function deps(orbio: OrbioClient): RunDeps {
     encryptionKey,
     chainId: ROBINHOOD_CHAIN_ID,
     inspectWebsite: async () => ({ url: "https://example.com/", title: "Example", text: "Example company" }),
+    settleDelay: async () => {},
   };
 }
 

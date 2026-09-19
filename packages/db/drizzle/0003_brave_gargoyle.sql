@@ -1,6 +1,6 @@
-ALTER TABLE "runs" ADD COLUMN "generations" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
-ALTER TABLE "runs" ADD COLUMN "result_ciphertext" text;--> statement-breakpoint
-ALTER TABLE "runs" ADD COLUMN "activation_tx_hash" text;--> statement-breakpoint
+ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "generations" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "result_ciphertext" text;--> statement-breakpoint
+ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "activation_tx_hash" text;--> statement-breakpoint
 UPDATE "runs" AS r
 SET "activation_tx_hash" = (
   SELECT a."transaction_hash"

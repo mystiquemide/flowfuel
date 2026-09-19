@@ -44,11 +44,12 @@ export interface RunDeps {
   chainId: number;
   rateLimiter?: RateLimiter;
   inspectWebsite?: typeof inspectPublicWebsite;
+  settleDelay?: (ms: number) => Promise<void>;
 }
 
 const TASK_PROMPTS: Record<RunRequest["task"]["type"], string> = {
   lead_intelligence:
-    "You are a lead intelligence agent. Inspect the supplied public company website, identify evidence relevant to qualification, assess opportunity and risk, then recommend the next sales action. Never invent evidence.",
+    "You are a lead intelligence agent. Inspect the supplied public company website, identify evidence relevant to qualification, assess opportunity and risk, then recommend the next sales action. Never invent evidence. Be concise: at most three findings, three risks, and three sources.",
 };
 
 const INSPECT_TOOL = {
@@ -410,7 +411,7 @@ async function executeLocked(
             balanceAfterSeen = balanceAfter;
             if (reconcileBalances(before.balance.available, balanceAfter, totalCostSeen)) break;
             if (attempt < 11) {
-              await new Promise((resolve) => setTimeout(resolve, 1_000));
+              await (deps.settleDelay ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(1_000);
             }
           }
         } catch (error) {
