@@ -29,9 +29,10 @@ function unitsToUsd(units: bigint): string {
 
 /**
  * Records an activation the client just sent from their own wallet. The chain
- * is the authority: the receipt must be a successful activate() call on the
- * CREDIT contract, sent by and for the client's wallet. Idempotent on the
- * transaction hash, so a retried submission returns the same record.
+ * is the authority: the receipt must be a successful call to the CREDIT or
+ * Exchange contract, sent by the client's wallet and emitting an Activation
+ * event for that wallet. Idempotent on the transaction hash, so a retried
+ * submission returns the same record.
  */
 export async function POST(
   request: Request,

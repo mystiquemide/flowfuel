@@ -10,8 +10,13 @@ import {
 } from "viem";
 import {
   CREDIT_CONTRACT_ADDRESS,
+  EXCHANGE_CONTRACT_ADDRESS,
   ROBINHOOD_CHAIN_ID,
+  USDG_CONTRACT_ADDRESS,
+  beneficiaryBytes32,
   creditContractAbi,
+  exchangeAbi,
+  usdgAbi,
 } from "@flowfuel/core";
 
 export interface EthereumProvider {
@@ -98,6 +103,129 @@ export async function activateCredit(
     throw new Error("Activation transaction reverted on chain");
   }
   return hash;
+}
+
+/**
+ * Approves the Exchange contract to spend exactly `amountUnits` of USDG from
+ * the connected wallet. The buyAndActivate budget (including exchange fees)
+ * comes out of this allowance, so approving exactly the intended input is the
+ * correct bound. Waits for the receipt and returns the transaction hash.
+ */
+export async function approveUsdg(
+  account: `0x${string}`,
+  amountUnits: bigint,
+): Promise<`0x${string}`> {
+  const eth = injectedProvider();
+  if (!eth) throw new Error("No wallet provider found");
+  const client = walletClientFor(eth);
+  const hash = await client.writeContract({
+    account,
+    chain: null,
+    address: getAddress(USDG_CONTRACT_ADDRESS),
+    abi: usdgAbi,
+    functionName: "approve",
+    args: [getAddress(EXCHANGE_CONTRACT_ADDRESS), amountUnits],
+  });
+  const publicClient = createPublicClient({
+    transport: http("https://rpc.mainnet.chain.robinhood.com"),
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    throw new Error("USDG approval transaction reverted on chain");
+  }
+  return hash;
+}
+
+/**
+ * Calls buyAndActivate(usdgIn, minCreditOut, beneficiary, maxFills) on the
+ * Exchange from the connected wallet: fills the order book with USDG and
+ * activates the bought CREDIT into the wallet's own Orbio balance in one
+ * transaction. Waits for the receipt and returns the transaction hash.
+ */
+export async function buyAndActivateCredit(
+  account: `0x${string}`,
+  usdgInUnits: bigint,
+  minCreditOutUnits: bigint,
+  maxFills: bigint,
+): Promise<`0x${string}`> {
+  const eth = injectedProvider();
+  if (!eth) throw new Error("No wallet provider found");
+  const client = walletClientFor(eth);
+  const hash = await client.writeContract({
+    account,
+    chain: null,
+    address: getAddress(EXCHANGE_CONTRACT_ADDRESS),
+    abi: exchangeAbi,
+    functionName: "buyAndActivate",
+    args: [usdgInUnits, minCreditOutUnits, beneficiaryBytes32(account), maxFills],
+  });
+  const publicClient = createPublicClient({
+    transport: http("https://rpc.mainnet.chain.robinhood.com"),
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    throw new Error("buyAndActivate transaction reverted on chain");
+  }
+  return hash;
+}
+
+let cachedPublicClient: ReturnType<typeof createPublicClient> | null = null;
+
+function robinhoodPublicClient() {
+  if (!cachedPublicClient) {
+    cachedPublicClient = createPublicClient({
+      transport: http("https://rpc.mainnet.chain.robinhood.com"),
+    });
+  }
+  return cachedPublicClient;
+}
+
+export interface UsdgQuote {
+  creditOut: bigint;
+  usdgSpent: bigint;
+  feeAtoms: bigint;
+  fills: bigint;
+  reason: number;
+}
+
+/**
+ * Quotes the exchange order book for a USDG spend. Read-only, runs in the
+ * browser so the quote can refresh as the client edits the amount. Quotes do
+ * not reserve liquidity; the submit path re-quotes before transacting.
+ */
+export async function quoteUsdgToCredit(
+  usdgInUnits: bigint,
+  maxFills: bigint,
+): Promise<UsdgQuote> {
+  const quote = (await robinhoodPublicClient().readContract({
+    address: getAddress(EXCHANGE_CONTRACT_ADDRESS),
+    abi: exchangeAbi,
+    functionName: "getQuote",
+    args: [usdgInUnits, maxFills],
+  })) as UsdgQuote;
+  return quote;
+}
+
+/** USDG the Exchange contract can already spend for this wallet. */
+export async function usdgAllowanceForExchange(
+  owner: `0x${string}`,
+): Promise<bigint> {
+  return (await robinhoodPublicClient().readContract({
+    address: getAddress(USDG_CONTRACT_ADDRESS),
+    abi: usdgAbi,
+    functionName: "allowance",
+    args: [getAddress(owner), getAddress(EXCHANGE_CONTRACT_ADDRESS)],
+  })) as bigint;
+}
+
+/** Order book fill bound enforced by the exchange. */
+export async function exchangeMaxFillsOnchain(): Promise<bigint> {
+  return (await robinhoodPublicClient().readContract({
+    address: getAddress(EXCHANGE_CONTRACT_ADDRESS),
+    abi: exchangeAbi,
+    functionName: "MAX_FILLS",
+    args: [],
+  })) as bigint;
 }
 
 /** Reads an API error body the same way the connect flow does. */

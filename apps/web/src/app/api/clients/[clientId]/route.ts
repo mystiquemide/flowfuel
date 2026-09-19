@@ -18,7 +18,7 @@ import {
   orbioBaseUrlFromEnv,
 } from "../../../../lib/env";
 import { errorResponse, parseJson } from "../../../../lib/http";
-import { creditBalanceOf } from "../../../../lib/chain";
+import { creditBalanceOf, usdgBalanceOf } from "../../../../lib/chain";
 import { liveActivatedBalance } from "../../../../lib/live";
 import { updateClientStatus } from "../../../../lib/registration";
 import { registrationDeps } from "../../../../lib/services";
@@ -46,7 +46,7 @@ export async function GET(
     const activations = createActivationStore(db);
     const credential = await credentials.getForClient(client.id);
 
-    const [balance, transferable, totalSpent, activation, recent] =
+    const [balance, transferable, usdg, totalSpent, activation, recent] =
       await Promise.all([
         liveActivatedBalance({
           orbio: createOrbioClient({ baseUrl: orbioBaseUrlFromEnv() }),
@@ -55,6 +55,7 @@ export async function GET(
           credential,
         }),
         creditBalanceOf(client.walletAddress).catch(() => null),
+        usdgBalanceOf(client.walletAddress).catch(() => null),
         runs.sumChargedCost(client.id),
         activations.latestForClient(client.id),
         runs.listByClient(client.id, 20),
@@ -75,6 +76,7 @@ export async function GET(
       balanceReadAt: balance.readAt,
       balanceUnavailableReason: balance.reason ?? null,
       transferableCreditUnits: transferable?.toString() ?? null,
+      usdgBalanceUnits: usdg?.toString() ?? null,
       totalSpentUsd: totalSpent.toFixed(6),
       latestActivation: activation
         ? {

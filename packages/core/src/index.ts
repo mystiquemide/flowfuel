@@ -1,5 +1,6 @@
 export * from "./constants";
 export * from "./credit";
+export * from "./exchange";
 export * from "./crypto";
 export * from "./schemas";
 export * from "./errors";

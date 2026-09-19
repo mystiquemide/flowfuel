@@ -4,17 +4,24 @@ import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getAddress } from "viem";
-import { ROBINHOOD_CHAIN_ID } from "@flowfuel/core";
+import { ROBINHOOD_CHAIN_ID, explorerTxUrl } from "@flowfuel/core";
 import { FlowFuelLogo } from "@/components/flowfuel-logo";
 import {
   activateCredit,
+  approveUsdg,
+  buyAndActivateCredit,
   connectInjected,
+  exchangeMaxFillsOnchain,
   injectedChainId,
+  injectedProvider,
+  quoteUsdgToCredit,
   readApiError,
   requestRobinhoodChain,
   truncateMiddle,
   unitsToUsd,
   usdToUnits,
+  usdgAllowanceForExchange,
+  type UsdgQuote,
 } from "@/lib/browser";
 
 interface ClientDetail {
@@ -26,6 +33,7 @@ interface ClientDetail {
   credentialRegistered: boolean;
   activatedBalance: string | null;
   transferableCreditUnits: string | null;
+  usdgBalanceUnits: string | null;
   latestActivation: { transactionHash: string; activationId: number | null } | null;
 }
 
@@ -43,7 +51,7 @@ type Phase =
   | { kind: "recording"; txHash: string }
   | { kind: "indexing"; txHash: string; activationId: number | null }
   | { kind: "done"; txHash: string; activationId: number | null }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string; txHash?: string };
 
 function OnboardInner() {
   const searchParams = useSearchParams();
@@ -56,6 +64,10 @@ function OnboardInner() {
   const [account, setAccount] = useState<`0x${string}` | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [allowance, setAllowance] = useState<string>("");
+  const [usdgAmount, setUsdgAmount] = useState<string>("");
+  const [usdgQuote, setUsdgQuote] = useState<UsdgQuote | null>(null);
+  const [usdgQuoteError, setUsdgQuoteError] = useState<string | null>(null);
+  const [maxFills, setMaxFills] = useState<bigint | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
 
   const loadClients = useCallback(async () => {
@@ -123,6 +135,21 @@ function OnboardInner() {
     }
   }
 
+  async function handleDisconnect() {
+    const eth = injectedProvider();
+    setAccount(null);
+    setChainId(null);
+    setPhase({ kind: "idle" });
+    try {
+      await eth?.request({
+        method: "wallet_revokePermissions",
+        params: [{ eth_accounts: {} }],
+      });
+    } catch {
+      // Wallets without revokePermissions still get their local state cleared.
+    }
+  }
+
   const transferableUnits = detail?.transferableCreditUnits
     ? BigInt(detail.transferableCreditUnits)
     : null;
@@ -137,7 +164,67 @@ function OnboardInner() {
     getAddress(account) !== getAddress(detail.walletAddress);
   const wrongChain = account !== null && chainId !== null && chainId !== ROBINHOOD_CHAIN_ID;
 
+  useEffect(() => {
+    let cancelled = false;
+    exchangeMaxFillsOnchain()
+      .then((value) => {
+        if (!cancelled) setMaxFills(value);
+      })
+      .catch(() => {
+        if (!cancelled) setMaxFills(BigInt(32));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const usdgBalanceUnits = detail?.usdgBalanceUnits
+    ? BigInt(detail.usdgBalanceUnits)
+    : null;
+  const usdgInputUnits = usdToUnits(usdgAmount || "0");
+  const usdgInputValid =
+    usdgInputUnits > BigInt(0) &&
+    usdgBalanceUnits !== null &&
+    usdgInputUnits <= usdgBalanceUnits;
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (!usdgInputValid || maxFills === null) {
+        setUsdgQuote(null);
+        setUsdgQuoteError(null);
+        return;
+      }
+      quoteUsdgToCredit(usdgInputUnits, maxFills)
+        .then((quote) => {
+          if (cancelled) return;
+          setUsdgQuote(quote);
+          setUsdgQuoteError(
+            quote.creditOut > BigInt(0)
+              ? null
+              : "The order book can't fill this amount right now.",
+          );
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setUsdgQuote(null);
+          setUsdgQuoteError("Couldn't read a quote from the exchange. Try again.");
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [usdgAmount, usdgInputValid, usdgInputUnits, maxFills]);
+
   async function pollForIndex(txHash: string, activationId: number | null) {
+    // Without a registered credential there is no gateway key to read a
+    // balance with. The activation is already verified on chain and recorded,
+    // so finish immediately instead of polling for a balance we cannot see.
+    if (!detail?.credentialRegistered) {
+      setPhase({ kind: "done", txHash, activationId });
+      return;
+    }
     setPhase({ kind: "indexing", txHash, activationId });
     const before = detail?.activatedBalance;
     for (let i = 0; i < 12; i += 1) {
@@ -153,22 +240,54 @@ function OnboardInner() {
     setPhase({ kind: "done", txHash, activationId });
   }
 
+  async function recordActivation(txHash: string) {
+    if (!detail) return;
+    setPhase({ kind: "recording", txHash });
+    const res = await fetch(`/api/clients/${detail.id}/activation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transactionHash: txHash }),
+    });
+    if (!res.ok) throw new Error(await readApiError(res));
+    const body = (await res.json()) as { activationId: number | null };
+    await pollForIndex(txHash, body.activationId);
+  }
+
   async function handleActivate() {
     if (!account || !detail || !allowanceValid) return;
+    let txHash: string | undefined;
     try {
       setPhase({ kind: "working", label: `Confirm activate(${allowance} CREDIT) in your wallet` });
-      const txHash = await activateCredit(account, allowanceUnits);
-      setPhase({ kind: "recording", txHash });
-      const res = await fetch(`/api/clients/${detail.id}/activation`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ transactionHash: txHash }),
-      });
-      if (!res.ok) throw new Error(await readApiError(res));
-      const body = (await res.json()) as { activationId: number | null };
-      await pollForIndex(txHash, body.activationId);
+      txHash = await activateCredit(account, allowanceUnits);
+      await recordActivation(txHash);
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The activation didn't finish. Try again." });
+      setPhase({ kind: "error", txHash, message: err instanceof Error ? err.message : "The activation didn't finish. Try again." });
+    }
+  }
+
+  async function handleBuyAndActivate() {
+    if (!account || !detail || !usdgInputValid || maxFills === null) return;
+    let txHash: string | undefined;
+    try {
+      setPhase({ kind: "working", label: "Quoting the order book" });
+      // Quotes do not reserve liquidity, so re-quote immediately before the
+      // transaction and set the minimum output 2% under the fresh quote.
+      const fresh = await quoteUsdgToCredit(usdgInputUnits, maxFills);
+      if (fresh.creditOut <= BigInt(0)) {
+        throw new Error("The order book can't fill this amount right now. Try a smaller USDG amount.");
+      }
+      const minCreditOut = (fresh.creditOut * BigInt(98)) / BigInt(100) || fresh.creditOut;
+
+      const allowanceNow = await usdgAllowanceForExchange(account);
+      if (allowanceNow < usdgInputUnits) {
+        setPhase({ kind: "working", label: `Confirm USDG approval (${usdgAmount} USDG) in your wallet` });
+        await approveUsdg(account, usdgInputUnits);
+      }
+      setPhase({ kind: "working", label: "Confirm buyAndActivate in your wallet" });
+      txHash = await buyAndActivateCredit(account, usdgInputUnits, minCreditOut, maxFills);
+      await recordActivation(txHash);
+    } catch (err) {
+      setPhase({ kind: "error", txHash, message: err instanceof Error ? err.message : "The USDG funding didn't finish. Try again." });
     }
   }
 
@@ -398,6 +517,13 @@ function OnboardInner() {
                       />
                       {truncateMiddle(account, 6, 4)}
                     </div>
+                    <button
+                      onClick={() => void handleDisconnect()}
+                      className="btn-quiet-action"
+                      style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: 5, cursor: "pointer", color: "var(--ink-muted)" }}
+                    >
+                      Disconnect
+                    </button>
                     {walletMismatch && (
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", color: "var(--danger)" }}>
                         Wrong wallet · switch to {truncateMiddle(detail.walletAddress, 6, 4)}
@@ -564,9 +690,14 @@ function OnboardInner() {
                   <div style={{ color: "var(--success)", fontWeight: 600, fontSize: "0.875rem", marginBottom: 6 }}>
                     ALLOWANCE ACTIVATED ON CHAIN
                   </div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink)", marginBottom: 4, wordBreak: "break-all" }}>
+                  <a
+                    href={explorerTxUrl(phase.txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink)", marginBottom: 4, wordBreak: "break-all", display: "block", textDecoration: "underline" }}
+                  >
                     {phase.txHash}
-                  </div>
+                  </a>
                   {phase.activationId !== null && (
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: 12 }}>
                       Activation ID #{phase.activationId}
@@ -604,6 +735,11 @@ function OnboardInner() {
                 </div>
               ) : (
                 <>
+                  {phase.kind === "working" && (
+                    <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)", margin: "0 0 10px" }}>
+                      {phase.label}…
+                    </p>
+                  )}
                   {phase.kind === "indexing" && (
                     <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)", margin: "0 0 10px" }}>
                       Confirmed on chain · updating your activated balance…
@@ -613,6 +749,16 @@ function OnboardInner() {
                     <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)", margin: "0 0 10px" }}>
                       Verifying transaction on Robinhood Chain…
                     </p>
+                  )}
+                  {(phase.kind === "indexing" || phase.kind === "recording") && (
+                    <a
+                      href={explorerTxUrl(phase.txHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)", display: "block", marginBottom: 10, textDecoration: "underline" }}
+                    >
+                      {truncateMiddle(phase.txHash, 14, 10)}
+                    </a>
                   )}
                   <button
                     onClick={() => void handleActivate()}
@@ -630,23 +776,175 @@ function OnboardInner() {
                       opacity: !allowanceValid || busy || !account ? 0.6 : 1,
                     }}
                   >
-                    {busy ? "Activating…" : `Activate ${allowance || "0"} CREDIT`}
+                    {phase.kind === "indexing"
+                      ? "Confirming…"
+                      : phase.kind === "recording"
+                        ? "Verifying…"
+                        : busy
+                          ? "Activating…"
+                          : allowance
+                            ? `Activate ${allowance} CREDIT`
+                            : "Activate CREDIT"}
                   </button>
                 </>
               )}
 
               {phase.kind === "error" && (
-                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--danger)", margin: "12px 0 0" }}>
-                  {phase.message}
-                </p>
+                <div style={{ marginTop: 12 }}>
+                  <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--danger)", margin: "0 0 6px" }}>
+                    {phase.message}
+                  </p>
+                  {phase.txHash && (
+                    <>
+                      <a
+                        href={explorerTxUrl(phase.txHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)", textDecoration: "underline", display: "block", marginBottom: 8 }}
+                      >
+                        On-chain transaction: {truncateMiddle(phase.txHash, 14, 10)}
+                      </a>
+                      <button
+                        onClick={() => phase.txHash && void recordActivation(phase.txHash).catch((err) => setPhase({ kind: "error", txHash: phase.txHash, message: err instanceof Error ? err.message : "Recording failed again." }))}
+                        className="btn-quiet-action"
+                        style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: 5, cursor: "pointer" }}
+                      >
+                        Retry recording
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
 
               {detail.latestActivation && phase.kind !== "done" && (
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-subtle)", marginTop: 12 }}>
-                  Latest activation on record: {truncateMiddle(detail.latestActivation.transactionHash, 10, 8)}
+                  Latest activation on record:{" "}
+                  <a
+                    href={explorerTxUrl(detail.latestActivation.transactionHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "var(--ink-muted)", textDecoration: "underline" }}
+                  >
+                    {truncateMiddle(detail.latestActivation.transactionHash, 10, 8)}
+                  </a>
                   {detail.latestActivation.activationId !== null && ` · ID #${detail.latestActivation.activationId}`}
                 </div>
               )}
+            </div>
+
+            {/* Alternative: fund with USDG via the exchange order book */}
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                backgroundColor: "var(--canvas)",
+                padding: "14px 18px",
+                marginBottom: 20,
+                opacity: account && !walletMismatch && !wrongChain ? 1 : 0.55,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.6875rem",
+                  letterSpacing: "0.06em",
+                  color: "var(--ink-subtle)",
+                  fontWeight: 600,
+                  marginBottom: 2,
+                }}
+              >
+                ALTERNATIVE · NO CREDIT NEEDED
+              </div>
+              <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
+                Fund with USDG
+              </h2>
+              <p style={{ fontSize: "0.875rem", color: "var(--ink-muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                Buy CREDIT on the Orbio exchange and activate it in one transaction. Your wallet approves USDG, then sends buyAndActivate().
+              </p>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 8 }}>
+                <input
+                  type="text"
+                  value={usdgAmount}
+                  onChange={(e) => setUsdgAmount(e.target.value)}
+                  placeholder="1.000000"
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 6,
+                    border: `1px solid ${usdgAmount && !usdgInputValid ? "var(--danger)" : "var(--border)"}`,
+                    backgroundColor: "var(--surface)",
+                    color: "var(--ink)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "1.0625rem",
+                    fontWeight: 600,
+                    width: 160,
+                  }}
+                />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--ink)", fontWeight: 500 }}>
+                  USDG
+                </span>
+                {usdgQuote !== null && usdgQuote.creditOut > BigInt(0) && (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--success)" }}>
+                    ≈ {unitsToUsd(usdgQuote.creditOut)} CREDIT activated
+                  </span>
+                )}
+              </div>
+
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--ink-muted)",
+                  fontFamily: "var(--font-mono)",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 16,
+                }}
+              >
+                <span>
+                  USDG balance:{" "}
+                  {usdgBalanceUnits !== null ? unitsToUsd(usdgBalanceUnits) : "unavailable"}
+                </span>
+              </div>
+              {usdgAmount && !usdgInputValid && (
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--danger)", margin: "8px 0 0" }}>
+                  {usdgInputUnits <= BigInt(0)
+                    ? "Enter an amount above 0 to fund."
+                    : "That amount is more than the USDG in this wallet. Enter a smaller amount."}
+                </p>
+              )}
+              {usdgQuoteError && (
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--warning)", margin: "8px 0 0" }}>
+                  {usdgQuoteError}
+                </p>
+              )}
+
+              <button
+                onClick={() => void handleBuyAndActivate()}
+                disabled={!usdgInputValid || usdgQuote === null || usdgQuote.creditOut <= BigInt(0) || busy || walletMismatch || wrongChain || !account}
+                className="btn-primary-action"
+                style={{
+                  backgroundColor: "var(--fuel)",
+                  color: "#ffffff",
+                  border: "none",
+                  padding: "10px 20px",
+                  borderRadius: 6,
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  marginTop: 12,
+                  cursor: !usdgInputValid || busy || !account ? "not-allowed" : "pointer",
+                  opacity: !usdgInputValid || busy || !account ? 0.6 : 1,
+                }}
+              >
+                {phase.kind === "indexing"
+                  ? "Confirming…"
+                  : phase.kind === "recording"
+                    ? "Verifying…"
+                    : busy
+                      ? "Funding…"
+                      : usdgAmount
+                        ? `Buy and activate ${usdgAmount} USDG`
+                        : "Buy and activate with USDG"}
+              </button>
             </div>
           </>
         )}
