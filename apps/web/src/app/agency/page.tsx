@@ -241,7 +241,7 @@ Replays with the same workflowRunId return the original run. No second charge.`;
             <Link href="/proof" className="nav-link-subtle" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
               Live Proof
             </Link>
-            <Link href="/docs" className="nav-link-subtle" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
+            <Link href="/docs/n8n-broker" className="nav-link-subtle" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
               n8n Docs
             </Link>
             <button

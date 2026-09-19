@@ -170,9 +170,6 @@ Body:
             <Link href="/proof" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
               Live Proof
             </Link>
-            <Link href="/docs" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
-              Docs
-            </Link>
           </nav>
         </div>
       </header>

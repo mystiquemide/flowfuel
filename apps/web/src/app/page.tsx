@@ -200,7 +200,7 @@ export default function Home() {
               Live Proof
             </Link>
             <Link
-              href="/docs"
+              href="/docs/n8n-broker"
               className="nav-link-subtle"
               style={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--ink-muted)" }}
             >
@@ -1111,7 +1111,7 @@ export default function Home() {
             <Link href="/agency">Agency</Link>
             <Link href="/client/onboard">Onboard</Link>
             <Link href="/proof">Proof</Link>
-            <Link href="/docs">Docs</Link>
+            <Link href="/docs/n8n-broker">Docs</Link>
           </div>
         </div>
       </footer>
