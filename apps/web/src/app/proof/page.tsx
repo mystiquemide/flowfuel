@@ -244,7 +244,7 @@ function ProofInner() {
             <Link href="/client/onboard" className="nav-link-subtle" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
               Client Onboard
             </Link>
-            <Link href="/docs/n8n-broker" className="nav-link-subtle" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
+            <Link href="/docs" className="nav-link-subtle" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
               n8n Docs
             </Link>
           </nav>
