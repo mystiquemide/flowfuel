@@ -24,7 +24,7 @@ export default async function ConnectPage({ params }: ConnectPageProps) {
           Client not found
         </h1>
         <p style={{ color: "var(--ink-muted)" }}>
-          This connect link does not match a registered client.
+          This connect link doesn&rsquo;t match a registered client. Ask the agency for a fresh one.
         </p>
       </main>
     );

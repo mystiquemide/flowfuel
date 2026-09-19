@@ -110,7 +110,7 @@ function OnboardInner() {
       setChainId(chain);
       setPhase({ kind: "idle" });
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Wallet connection failed" });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Couldn't connect the wallet. Try again." });
     }
   }
 
@@ -119,7 +119,7 @@ function OnboardInner() {
       await requestRobinhoodChain();
       setChainId(await injectedChainId());
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Chain switch failed" });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Couldn't switch networks. Switch to Robinhood Chain in your wallet, then try again." });
     }
   }
 
@@ -168,7 +168,7 @@ function OnboardInner() {
       const body = (await res.json()) as { activationId: number | null };
       await pollForIndex(txHash, body.activationId);
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Activation failed" });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The activation didn't finish. Try again." });
     }
   }
 
@@ -256,7 +256,7 @@ function OnboardInner() {
               lineHeight: 1.25,
             }}
           >
-            Set Your AI Spending Limit
+            Set Your AI Allowance
           </h1>
           <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.5, margin: 0, maxWidth: 680 }}>
             Choose how much of your CREDIT balance this agency can use for AI inference. The agency can only spend from the amount you activate.
@@ -458,7 +458,7 @@ function OnboardInner() {
                 STEP 02
               </div>
               <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
-                Choose Your Spending Limit
+                Choose Your Allowance
               </h2>
               <p style={{ fontSize: "0.875rem", color: "var(--ink-muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
                 Choose the amount of CREDIT this agency can use for your AI automation.
@@ -511,8 +511,8 @@ function OnboardInner() {
               {allowance && !allowanceValid && (
                 <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--danger)", margin: "8px 0 0" }}>
                   {allowanceUnits <= BigInt(0)
-                    ? "Enter an amount greater than zero."
-                    : "Amount exceeds your transferable CREDIT balance."}
+                    ? "Enter an amount above 0 to activate."
+                    : "That amount is more than the transferable CREDIT in this wallet. Enter a smaller amount, or leave the rest unactivated."}
                 </p>
               )}
               {transferableUnits === BigInt(0) && (
@@ -606,7 +606,7 @@ function OnboardInner() {
                 <>
                   {phase.kind === "indexing" && (
                     <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)", margin: "0 0 10px" }}>
-                      Confirmed on chain · waiting for the Orbio index to reflect the new balance…
+                      Confirmed on chain · updating your activated balance…
                     </p>
                   )}
                   {phase.kind === "recording" && (

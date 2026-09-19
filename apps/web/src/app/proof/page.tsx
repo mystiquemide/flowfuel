@@ -80,12 +80,12 @@ function ProofInner() {
       const listRes = await fetch("/api/runs?limit=50", { cache: "no-store" });
       if (!listRes.ok) throw new Error(await readApiError(listRes));
       const { runs } = (await listRes.json()) as { runs: RunRow[] };
-      if (runs.length === 0) throw new Error("No runs recorded yet");
+      if (runs.length === 0) throw new Error("No runs recorded yet. Run the n8n workflow to produce the first receipt.");
 
       let workflowRunId: string | null = null;
       if (runParam) {
         const target = runs.find((r) => r.runId === runParam);
-        if (!target) throw new Error("No run with this ID");
+        if (!target) throw new Error("No run matches this link. Check the URL or pick a recent run.");
         workflowRunId = target.workflowRunId ?? `solo:${target.runId}`;
       } else {
         // Canonical proof: the newest workflow run containing both a
@@ -110,7 +110,7 @@ function ProofInner() {
         }
         if (!best) {
           const first = runs.find((r) => r.workflowRunId);
-          if (!first?.workflowRunId) throw new Error("No shared workflow runs yet");
+          if (!first?.workflowRunId) throw new Error("No shared workflow runs yet. Run the n8n workflow to produce one.");
           best = first.workflowRunId;
         }
         workflowRunId = best;
@@ -145,7 +145,7 @@ function ProofInner() {
       setLoadedAt(new Date());
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load proof");
+      setLoadError(err instanceof Error ? err.message : "Couldn't load the proof data. Try again.");
       setPair(null);
     } finally {
       setLoading(false);

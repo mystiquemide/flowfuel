@@ -217,7 +217,7 @@ export default function Home() {
                 fontWeight: 600,
               }}
             >
-              Launch App
+              Open App
             </Link>
           </nav>
         </div>

@@ -240,13 +240,16 @@ async function verifySignedAction(
     signature: signature as `0x${string}`,
   });
   if (!valid) {
-    throw new FlowFuelError("UNAUTHORIZED", "Signature verification failed");
+    throw new FlowFuelError("UNAUTHORIZED", "Signature verification failed", {
+      action: "Sign the message again with the client wallet.",
+    });
   }
   const consumed = await deps.clients.consumeNonce(nonce, clientId, purpose);
   if (!consumed) {
     throw new FlowFuelError(
       "UNAUTHORIZED",
       "Nonce is expired, consumed, or issued for another purpose",
+      { action: "Request a fresh message and sign it again." },
     );
   }
 }

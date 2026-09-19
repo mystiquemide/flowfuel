@@ -105,7 +105,7 @@ function DashboardInner() {
       setLoadError(null);
       return body;
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load client");
+      setLoadError(err instanceof Error ? err.message : "Couldn't load this client. Try again.");
       return null;
     }
   }, []);
@@ -123,7 +123,7 @@ function DashboardInner() {
           const body = (await res.json()) as { clients: ClientListEntry[] };
           setClients(body.clients);
         } catch (err) {
-          setLoadError(err instanceof Error ? err.message : "Failed to load clients");
+          setLoadError(err instanceof Error ? err.message : "Couldn't load clients. Try again.");
         }
       })();
     });
@@ -137,7 +137,7 @@ function DashboardInner() {
       setChainId(await injectedChainId().catch(() => null));
       setPhase({ kind: "idle" });
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Wallet connection failed" });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Couldn't connect the wallet. Try again." });
     }
   }
 
@@ -156,7 +156,7 @@ function DashboardInner() {
     const chain = await injectedChainId().catch(() => null);
     setChainId(chain);
     if (detail && getAddress(addr) !== getAddress(detail.walletAddress)) {
-      throw new Error(`Connected wallet does not match this client. Switch to ${detail.walletAddress}`);
+      throw new Error(`This wallet isn't the registered client wallet. Switch to ${truncateMiddle(detail.walletAddress, 6, 4)} to continue.`);
     }
     if (chain !== null && chain !== ROBINHOOD_CHAIN_ID) {
       await requestRobinhoodChain();
@@ -170,7 +170,7 @@ function DashboardInner() {
     if (!detail) return;
     const units = usdToUnits(topUpAmount || "0");
     if (units <= BigInt(0)) {
-      setPhase({ kind: "error", message: "Enter an amount greater than zero." });
+      setPhase({ kind: "error", message: "Enter an amount above 0 to top up." });
       return;
     }
     setPhase({ kind: "working", label: `Confirm activate(${topUpAmount} CREDIT) in your wallet` });
@@ -193,7 +193,7 @@ function DashboardInner() {
       setTimeout(() => void loadDetail(detail.slug), 10_000);
       await loadDetail(detail.slug);
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Top up failed" });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The top up didn't finish. Try again." });
     }
   }
 
@@ -217,7 +217,7 @@ function DashboardInner() {
       setTimeout(() => setNotice(null), 5000);
       await loadDetail(detail.slug);
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Status change failed" });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The status change didn't finish. Try again." });
     }
   }
 
@@ -241,7 +241,7 @@ function DashboardInner() {
       setTimeout(() => setNotice(null), 8000);
       await loadDetail(detail.slug);
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Revocation failed" });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The revocation didn't finish. Try again." });
     }
   }
 
@@ -438,7 +438,7 @@ function DashboardInner() {
             )}
             {clients !== null && clients.length === 0 && (
               <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
-                No clients registered yet.
+                No clients registered yet. Create one in the agency workspace.
               </p>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -691,7 +691,7 @@ function DashboardInner() {
                 }}
               >
                 <h3 style={{ margin: "0 0 6px", fontSize: "0.9375rem", fontWeight: 550, color: "var(--ink)" }}>
-                  Top Up Allowance from Wallet
+                  Top Up Allowance
                 </h3>
                 <p style={{ margin: "0 0 12px", fontSize: "0.8125rem", color: "var(--ink-muted)", lineHeight: 1.5 }}>
                   Sends activate(amount) to CREDIT contract {truncateMiddle("0xe33322da1380e61e5ae5dfb21e7f62924c73004c", 10, 6)} from your wallet. The activated amount becomes spendable inference credit.
@@ -857,7 +857,7 @@ function DashboardInner() {
                     {detail.recentRuns.length === 0 && (
                       <tr>
                         <td colSpan={5} style={{ padding: "14px 16px", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
-                          No runs recorded for this client yet.
+                          No runs yet. They appear here after the first workflow execution.
                         </td>
                       </tr>
                     )}

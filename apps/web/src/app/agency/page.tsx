@@ -94,7 +94,7 @@ export default function AgencyPage() {
       setRuns(runsBody.runs);
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load");
+      setLoadError(err instanceof Error ? err.message : "Couldn't load the workspace. Try Refresh.");
     }
   }, []);
 
@@ -177,7 +177,7 @@ Replays with the same workflowRunId return the original run. No second charge.`;
     });
     setAdding(false);
     if (!result.ok) {
-      setAddError(result.error ?? "Failed to create client");
+      setAddError(result.error ?? "Couldn't create the client. Check the name and address, then try again.");
       return;
     }
     setNewClientName("");
@@ -597,7 +597,7 @@ Replays with the same workflowRunId return the original run. No second charge.`;
                             className="btn-quiet-action"
                             style={{ padding: "5px 9px", borderRadius: 4, fontSize: "0.75rem", display: "inline-block" }}
                           >
-                            Connect Link
+                            Open Connect Page
                           </Link>
                         </div>
                       </td>

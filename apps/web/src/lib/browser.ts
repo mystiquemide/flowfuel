@@ -34,7 +34,7 @@ export async function connectInjected(): Promise<`0x${string}`> {
   }
   const client = walletClientFor(eth);
   const [addr] = await client.requestAddresses();
-  if (!addr) throw new Error("Wallet returned no address");
+  if (!addr) throw new Error("The wallet didn't share an address. Approve the connection request and try again.");
   return getAddress(addr);
 }
 
@@ -104,9 +104,9 @@ export async function activateCredit(
 export async function readApiError(res: Response): Promise<string> {
   try {
     const body = await res.json();
-    return body.action ?? body.code ?? `HTTP ${res.status}`;
+    return body.action ?? body.code ?? `Something went wrong (HTTP ${res.status}). Try again.`;
   } catch {
-    return `HTTP ${res.status}`;
+    return `Something went wrong (HTTP ${res.status}). Try again.`;
   }
 }
 
