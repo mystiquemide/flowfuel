@@ -51,7 +51,9 @@ function sendError(res: ServerResponse, error: FlowFuelError): void {
           ? 409
           : error.code === "RATE_LIMITED"
             ? 429
-            : 400;
+            : error.code === "CLIENT_PAUSED"
+              ? 403
+              : 400;
   sendJson(res, status, body);
 }
 

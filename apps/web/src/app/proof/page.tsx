@@ -1,54 +1,176 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { CREDIT_CONTRACT_ADDRESS } from "@flowfuel/core";
 import { FlowFuelLogo } from "@/components/flowfuel-logo";
+import { readApiError, truncateMiddle } from "@/lib/browser";
 
-export default function ProofPage() {
-  const [downloaded, setDownloaded] = useState<boolean>(false);
+interface RunRow {
+  runId: string;
+  clientId: string;
+  clientName: string | null;
+  status: string;
+  taskType: string;
+  taskHash: string;
+  model: string;
+  workflowRunId: string | null;
+  generationId: string | null;
+  balanceBefore: string | null;
+  balanceAfter: string | null;
+  costUsd: string | null;
+  errorCode: string | null;
+  upstreamStatus: number | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+interface PublicReceipt {
+  runId: string;
+  status: string;
+  reconciled: boolean;
+  clientWallet: string;
+  workflowRunId: string | null;
+  taskHash: string;
+  model: string;
+  generationId: string | null;
+  balanceBefore: string | null;
+  costUsd: string | null;
+  balanceAfter: string | null;
+  upstreamStatus: number | null;
+  activationTxHash: string | null;
+  activationExplorerUrl: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  source: "live";
+}
+
+interface PairData {
+  workflowRunId: string;
+  runs: RunRow[];
+  receipts: Record<string, PublicReceipt>;
+  clients: Record<string, { displayName: string; walletAddress: string }>;
+}
+
+const RUN_STATUS_LABEL: Record<string, string> = {
+  succeeded: "succeeded",
+  client_unfunded: "client_unfunded",
+  quota_exceeded: "quota_exceeded",
+  provider_failed: "provider_failed",
+  reconciliation_failed: "reconciliation_failed",
+  validation_failed: "validation_failed",
+  running: "running",
+};
+
+function ProofInner() {
+  const searchParams = useSearchParams();
+  const runParam = searchParams.get("run");
+
+  const [pair, setPair] = useState<PairData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [downloaded, setDownloaded] = useState(false);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
+  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
 
-  const proofData = {
-    network: {
-      name: "Robinhood Chain Testnet",
-      chainId: 4663,
-      verifiedAt: "2026-09-18T22:14:00Z",
-    },
-    invariant: "Every client runs against their own isolated Orbio balance.",
-    contracts: {
-      creditContract: "0xe33322da1380e61e5ae5dfb21e7f62924c73004c",
-      activationId: 200,
-    },
-    clientA: {
-      address: "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F",
-      activatedAllowance: "$0.010000",
-      usedCost: "$0.000225",
-      remainingBalance: "$0.009775",
-      httpStatus: 200,
-      n8nOutput: "N8N_CLIENT_A_OK",
-      txHashes: {
-        creditTransfer: "0x85bd856eaaa0fd44abdbb07779ca6f9b72fb9631e24d3f3635a219d05e8596d3",
-        ethFunding: "0x4990f594dfe136d8f0132ed81d2b4a02a8bed51175cfa4d2cc0d9ad8d5d7f350",
-        activation: "0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed",
-      },
-    },
-    clientB: {
-      address: "0xA0234103102008dCf310182a829Cd18408373CEC",
-      activatedAllowance: "$0.000000",
-      usedCost: "$0.000000",
-      remainingBalance: "$0.000000",
-      httpStatus: 401,
-      errorCode: "invalid_api_key",
-      n8nOutput: null,
-    },
-  };
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const listRes = await fetch("/api/runs?limit=50", { cache: "no-store" });
+      if (!listRes.ok) throw new Error(await readApiError(listRes));
+      const { runs } = (await listRes.json()) as { runs: RunRow[] };
+      if (runs.length === 0) throw new Error("No runs recorded yet");
+
+      let workflowRunId: string | null = null;
+      if (runParam) {
+        const target = runs.find((r) => r.runId === runParam);
+        if (!target) throw new Error("No run with this ID");
+        workflowRunId = target.workflowRunId ?? `solo:${target.runId}`;
+      } else {
+        // Canonical proof: the newest workflow run containing both a
+        // succeeded and a blocked sibling.
+        const groups = new Map<string, RunRow[]>();
+        for (const run of runs) {
+          if (!run.workflowRunId) continue;
+          const g = groups.get(run.workflowRunId) ?? [];
+          g.push(run);
+          groups.set(run.workflowRunId, g);
+        }
+        let best: string | null = null;
+        for (const [id, members] of groups) {
+          const hasSuccess = members.some((m) => m.status === "succeeded");
+          const hasBlocked = members.some(
+            (m) => m.status === "client_unfunded" || m.status === "quota_exceeded",
+          );
+          if (hasSuccess && hasBlocked) {
+            best = id;
+            break;
+          }
+        }
+        if (!best) {
+          const first = runs.find((r) => r.workflowRunId);
+          if (!first?.workflowRunId) throw new Error("No shared workflow runs yet");
+          best = first.workflowRunId;
+        }
+        workflowRunId = best;
+      }
+
+      const siblings = workflowRunId.startsWith("solo:")
+        ? runs.filter((r) => r.runId === workflowRunId!.slice(5))
+        : runs.filter((r) => r.workflowRunId === workflowRunId);
+
+      const receipts: Record<string, PublicReceipt> = {};
+      await Promise.all(
+        siblings.map(async (run) => {
+          const res = await fetch(`/api/runs/${run.runId}/receipt`, { cache: "no-store" });
+          if (res.ok) {
+            receipts[run.runId] = (await res.json()) as PublicReceipt;
+          }
+        }),
+      );
+
+      const clients: PairData["clients"] = {};
+      await Promise.all(
+        [...new Set(siblings.map((r) => r.clientId))].map(async (id) => {
+          const res = await fetch(`/api/clients/${id}`, { cache: "no-store" });
+          if (res.ok) {
+            const c = (await res.json()) as { displayName: string; walletAddress: string };
+            clients[id] = { displayName: c.displayName, walletAddress: c.walletAddress };
+          }
+        }),
+      );
+
+      setPair({ workflowRunId, runs: siblings, receipts, clients });
+      setLoadedAt(new Date());
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load proof");
+      setPair(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [runParam]);
+
+  useEffect(() => {
+    queueMicrotask(() => void load());
+  }, [load]);
 
   const handleDownloadJson = () => {
-    const blob = new Blob([JSON.stringify(proofData, null, 2)], { type: "application/json" });
+    if (!pair) return;
+    const payload = {
+      source: "live",
+      fetchedAt: loadedAt?.toISOString(),
+      invariant: "Every client runs against their own isolated Orbio balance.",
+      chainId: 4663,
+      workflowRunId: pair.workflowRunId,
+      receipts: pair.runs.map((r) => pair.receipts[r.runId]).filter(Boolean),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "flowfuel-cryptographic-proof-chain-4663.json";
+    a.download = `flowfuel-receipts-${pair.workflowRunId}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setDownloaded(true);
@@ -61,14 +183,19 @@ export default function ProofPage() {
     setTimeout(() => setCopiedHash(null), 2500);
   };
 
-  const truncate = (str: string, lead = 10, tail = 8) => {
-    if (str.length <= lead + tail) return str;
-    return `${str.slice(0, lead)}...${str.slice(-tail)}`;
-  };
+  // Sort: succeeded first, then blocked/failed. Judges compare A vs B at a glance.
+  const orderedRuns = pair
+    ? [...pair.runs].sort((a, b) => {
+        const rank = (s: string) => (s === "succeeded" ? 0 : s === "running" ? 2 : 1);
+        return rank(a.status) - rank(b.status);
+      })
+    : [];
+
+  const funded = orderedRuns.find((r) => r.status === "succeeded");
+  const blocked = orderedRuns.find((r) => r.status !== "succeeded" && r.status !== "running");
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--canvas)", color: "var(--ink)" }}>
-      {/* Header */}
       <header
         style={{
           borderBottom: "1px solid var(--border)",
@@ -125,7 +252,6 @@ export default function ProofPage() {
       </header>
 
       <main className="workspace-page-fade" style={{ maxWidth: 1040, margin: "0 auto", padding: "36px 24px 60px" }}>
-        {/* Simplified Page Header */}
         <div style={{ marginBottom: 20 }}>
           <span
             style={{
@@ -152,14 +278,18 @@ export default function ProofPage() {
           >
             Client Isolation Proof
           </h1>
-          <p style={{ color: "var(--ink-muted)", fontSize: "0.875rem", lineHeight: 1.5, margin: "0 0 16px" }}>
+          <p style={{ color: "var(--ink-muted)", fontSize: "0.875rem", lineHeight: 1.5, margin: "0 0 8px" }}>
             Funded clients execute. Unfunded clients stop before inference. No shared agency balance is touched.
           </p>
+          {pair && loadedAt && (
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-subtle)", margin: "0 0 16px" }}>
+              workflow run {pair.workflowRunId} · live · rendered {loadedAt.toLocaleTimeString("en-GB", { timeZone: "UTC" })} UTC
+            </p>
+          )}
 
-          {/* Top Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <a
-              href="#onchain-evidence"
+              href="#receipts"
               className="btn-primary-action"
               style={{
                 display: "inline-flex",
@@ -175,15 +305,13 @@ export default function ProofPage() {
                 cursor: "pointer",
               }}
             >
-              <span>View Onchain Evidence</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 2.5V9.5M6 9.5L9 6.5M6 9.5L3 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <span>View Receipts</span>
             </a>
 
             <button
               type="button"
               onClick={handleDownloadJson}
+              disabled={!pair}
               className="btn-quiet-action"
               style={{
                 display: "inline-flex",
@@ -199,397 +327,516 @@ export default function ProofPage() {
                 cursor: "pointer",
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.5 8.5V9.5C2.5 10.0523 2.94772 10.5 3.5 10.5H8.5C9.05228 10.5 9.5 10.0523 9.5 9.5V8.5M6 1.5V7.5M6 7.5L3.5 5M6 7.5L8.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
               <span>{downloaded ? "JSON Downloaded" : "Download Raw Verification JSON"}</span>
             </button>
           </div>
         </div>
 
-        {/* Compact Proof Summary Row */}
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 12,
-            padding: "10px 16px",
-            backgroundColor: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 7,
-            marginBottom: 24,
-            fontSize: "0.8125rem",
-            fontFamily: "var(--font-mono)",
-          }}
-        >
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--success)", fontWeight: 500 }}>
-            <span>✓</span>
-            <span>Client A executed</span>
-          </div>
-          <span style={{ color: "var(--border)" }}>·</span>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--danger)", fontWeight: 500 }}>
-            <span style={{ fontSize: "0.75rem" }}>✕</span>
-            <span>Client B blocked</span>
-          </div>
-          <span style={{ color: "var(--border)" }}>·</span>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--success)", fontWeight: 500 }}>
-            <span>✓</span>
-            <span>$0 agency balance impact</span>
-          </div>
-          <span style={{ color: "var(--border)" }}>·</span>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ink)", fontWeight: 500 }}>
-            <span>✓</span>
-            <span>Robinhood Chain 4663</span>
-          </div>
-        </div>
-
-        {/* Two-Client Execution Comparison Table */}
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            overflow: "hidden",
-            backgroundColor: "var(--surface)",
-            marginBottom: 28,
-          }}
-        >
+        {loading && (
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
+            Loading live run data…
+          </p>
+        )}
+        {loadError && (
           <div
             style={{
-              padding: "14px 20px",
-              backgroundColor: "var(--surface)",
-              borderBottom: "1px solid var(--border)",
+              padding: "12px 18px",
+              backgroundColor: "rgba(220, 38, 38, 0.08)",
+              border: "1px solid rgba(220, 38, 38, 0.25)",
+              borderRadius: 6,
+              color: "var(--danger)",
+              fontSize: "0.875rem",
+              fontFamily: "var(--font-mono)",
+              marginBottom: 20,
             }}
           >
-            <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: "var(--ink)" }}>
-              Two-Client Execution Comparison
-            </h2>
-            <div style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <span>Both branches called with identical task payload:</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <code
-                  title="sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1"
-                  style={{
-                    fontSize: "0.6875rem",
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--ink-muted)",
-                    backgroundColor: "var(--canvas)",
-                    padding: "1px 6px",
-                    borderRadius: 3,
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  sha256:7f83b1...416fd1
-                </code>
+            {loadError}
+          </div>
+        )}
+
+        {pair && (
+          <>
+            {/* Proof summary strip */}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 16px",
+                backgroundColor: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 7,
+                marginBottom: 24,
+                fontSize: "0.8125rem",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              {funded && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--success)", fontWeight: 500 }}>
+                  <span>✓</span>
+                  <span>{pair.clients[funded.clientId]?.displayName ?? "Funded client"} executed</span>
+                </div>
+              )}
+              {blocked && (
+                <>
+                  <span style={{ color: "var(--border)" }}>·</span>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--danger)", fontWeight: 500 }}>
+                    <span style={{ fontSize: "0.75rem" }}>✕</span>
+                    <span>{pair.clients[blocked.clientId]?.displayName ?? "Unfunded client"} blocked</span>
+                  </div>
+                </>
+              )}
+              <span style={{ color: "var(--border)" }}>·</span>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ink)", fontWeight: 500 }}>
+                <span>task hash {truncateMiddle(orderedRuns[0]?.taskHash ?? "", 10, 6)}</span>
                 <button
                   type="button"
-                  onClick={() => handleCopy("sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1")}
+                  onClick={() => handleCopy(orderedRuns[0]?.taskHash ?? "")}
                   style={{
                     background: "none",
                     border: "none",
-                    padding: "0 2px",
+                    padding: 0,
                     cursor: "pointer",
-                    color: copiedHash === "sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1" ? "var(--success)" : "var(--ink-muted)",
-                    fontSize: "0.6875rem",
+                    color: copiedHash === orderedRuns[0]?.taskHash ? "var(--success)" : "var(--ink-muted)",
+                    fontSize: "0.75rem",
                     fontFamily: "var(--font-mono)",
                     textDecoration: "underline",
                   }}
                 >
-                  {copiedHash === "sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1" ? "Copied" : "Copy"}
+                  {copiedHash === orderedRuns[0]?.taskHash ? "Copied" : "Copy"}
                 </button>
-              </span>
+              </div>
             </div>
-          </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: "var(--canvas)",
-                    borderBottom: "1px solid var(--border)",
-                    fontSize: "0.6875rem",
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--ink-muted)",
-                    letterSpacing: "0.03em",
-                  }}
-                >
-                  <th style={{ padding: "10px 16px", fontWeight: 600 }}>VERIFICATION PARAMETER</th>
-                  <th style={{ padding: "10px 16px", color: "var(--success)", fontWeight: 600 }}>
-                    Client A · Funded
-                  </th>
-                  <th style={{ padding: "10px 16px", color: "var(--danger)", fontWeight: 600 }}>
-                    Client B · No Balance
-                  </th>
-                </tr>
-              </thead>
-              <tbody style={{ fontSize: "0.8125rem", fontFamily: "var(--font-mono)" }}>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Wallet Address
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink)" }}>
-                    <code>0x78A4e72C413B1A91A25D253988BB61258d9C8c2F</code>
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink)" }}>
-                    <code>0xA0234103102008dCf310182a829Cd18408373CEC</code>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Activation Status
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--success)" }}>
-                    ID #200 (Active on Robinhood Chain)
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--danger)" }}>
-                    None (Zero Activated Balance)
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Execution State
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ color: "var(--success)", fontWeight: 600 }}>Executed · HTTP 200 OK</div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--ink-muted)", fontFamily: "var(--font-sans)", marginTop: 2 }}>
-                      Clean completion via Orbio gateway
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ color: "var(--danger)", fontWeight: 600 }}>Blocked before inference · No active allowance</div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--ink-muted)", marginTop: 2 }}>
-                      HTTP 401 Unauthorized (invalid_api_key)
-                    </div>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Gateway Response Code
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--success)", fontWeight: 600 }}>
-                    HTTP 200 OK
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--danger)", fontWeight: 600 }}>
-                    HTTP 401 Unauthorized
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Gateway Error Output
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink-muted)" }}>None (Clean Execution)</td>
-                  <td style={{ padding: "12px 16px", color: "var(--danger)" }}>
-                    <code>invalid_api_key</code>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    n8n Workflow Output
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--success)" }}>
-                    <code>N8N_CLIENT_A_OK</code>
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink-muted)" }}>
-                    Blocked (Zero Tokens Forwarded)
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Pre-Run Balance
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink)" }}>$0.010000</td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink)" }}>$0.000000</td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Post-Run Balance
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--success)", fontWeight: 600 }}>
-                    $0.009775
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink)" }}>$0.000000</td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Billed Cost
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--danger)" }}>-$0.000225</td>
-                  <td style={{ padding: "12px 16px", color: "var(--ink-muted)" }}>$0.000000 (No Charge)</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                    Agency Balance Impact
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--success)" }}>
-                    $0.000000 (Completely Isolated)
-                  </td>
-                  <td style={{ padding: "12px 16px", color: "var(--success)" }}>
-                    $0.000000 (No Fallback Leakage)
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Onchain Evidence Section */}
-        <div
-          id="onchain-evidence"
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            overflow: "hidden",
-            backgroundColor: "var(--surface)",
-            padding: "20px 22px",
-            marginBottom: 28,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-            <div>
-              <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: "var(--ink)" }}>
-                Onchain Evidence
-              </h2>
-              <p style={{ margin: "3px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
-                Cryptographic transaction and contract artifacts verifiable on the public explorer
-              </p>
-            </div>
-            <span
+            {/* Comparison table */}
+            <div
+              id="receipts"
               style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.6875rem",
-                color: "var(--ink-muted)",
-                backgroundColor: "var(--canvas)",
-                padding: "2px 8px",
-                borderRadius: 4,
                 border: "1px solid var(--border)",
+                borderRadius: 8,
+                overflow: "hidden",
+                backgroundColor: "var(--surface)",
+                marginBottom: 28,
               }}
             >
-              Robinhood Chain 4663
-            </span>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[
-              {
-                label: "CREDIT Contract",
-                hash: "0xe33322da1380e61e5ae5dfb21e7f62924c73004c",
-                note: "ERC-20 CREDIT token contract on Robinhood Chain",
-                explorerUrl: "https://robin.etherscan.io/address/0xe33322da1380e61e5ae5dfb21e7f62924c73004c",
-              },
-              {
-                label: "Client A Funding Transaction",
-                hash: "0x85bd856eaaa0fd44abdbb07779ca6f9b72fb9631e24d3f3635a219d05e8596d3",
-                note: "Transfers CREDIT from test faucet to Client A wallet",
-                explorerUrl: "https://robin.etherscan.io/tx/0x85bd856eaaa0fd44abdbb07779ca6f9b72fb9631e24d3f3635a219d05e8596d3",
-              },
-              {
-                label: "Client A Gas Funding Transaction",
-                hash: "0x4990f594dfe136d8f0132ed81d2b4a02a8bed51175cfa4d2cc0d9ad8d5d7f350",
-                note: "Funds Client A with native ETH for contract interaction",
-                explorerUrl: "https://robin.etherscan.io/tx/0x4990f594dfe136d8f0132ed81d2b4a02a8bed51175cfa4d2cc0d9ad8d5d7f350",
-              },
-              {
-                label: "Client A Allowance Activation",
-                hash: "0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed",
-                note: "Activates $0.01 allowance on Orbio gateway under Activation ID #200",
-                explorerUrl: "https://robin.etherscan.io/tx/0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed",
-              },
-            ].map((item, idx) => (
               <div
-                key={idx}
                 style={{
-                  padding: "12px 14px",
-                  backgroundColor: "var(--canvas)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  display: "flex",
-                  flexWrap: "wrap",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
+                  padding: "14px 20px",
+                  backgroundColor: "var(--surface)",
+                  borderBottom: "1px solid var(--border)",
                 }}
               >
-                <div style={{ minWidth: 260, flex: "1 1 auto" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 600, fontSize: "0.8125rem", color: "var(--ink)" }}>
-                      {item.label}
-                    </span>
-                    <span
-                      title={item.hash}
-                      style={{
-                        fontSize: "0.75rem",
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--ink-muted)",
-                        backgroundColor: "var(--surface)",
-                        padding: "1px 6px",
-                        borderRadius: 3,
-                        border: "1px solid var(--border)",
-                      }}
-                    >
-                      {truncate(item.hash, 10, 8)}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--ink-muted)", marginTop: 4 }}>
-                    {item.note}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <a
-                    href={item.explorerUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      backgroundColor: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      color: "var(--ink)",
-                      padding: "5px 10px",
-                      borderRadius: 4,
-                      fontSize: "0.75rem",
-                      fontWeight: 500,
-                      textDecoration: "none",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <span>View on Explorer</span>
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M3.5 2.5H9.5V8.5M9.5 2.5L2.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(item.hash)}
-                    style={{
-                      backgroundColor: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      color: "var(--ink-muted)",
-                      padding: "5px 10px",
-                      borderRadius: 4,
-                      fontSize: "0.75rem",
-                      fontFamily: "var(--font-mono)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {copiedHash === item.hash ? "Copied" : "Copy"}
-                  </button>
+                <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: "var(--ink)" }}>
+                  Shared Workflow, Enforced Outcomes
+                </h2>
+                <div style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
+                  Same n8n execution · same task payload · different payer balances
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Footer Subtext */}
-        <div style={{ textAlign: "center", paddingTop: 8 }}>
-          <p style={{ fontSize: "0.6875rem", color: "var(--ink-subtle)", fontFamily: "var(--font-mono)", margin: 0 }}>
-            Verified live · Robinhood Chain 4663 · Orbio Gateway · All listed artifacts are verifiable onchain
-          </p>
-        </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                  <thead>
+                    <tr
+                      style={{
+                        backgroundColor: "var(--canvas)",
+                        borderBottom: "1px solid var(--border)",
+                        fontSize: "0.6875rem",
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--ink-muted)",
+                        letterSpacing: "0.03em",
+                      }}
+                    >
+                      <th style={{ padding: "10px 16px", fontWeight: 600 }}>VERIFICATION PARAMETER</th>
+                      {orderedRuns.map((run) => (
+                        <th
+                          key={run.runId}
+                          style={{
+                            padding: "10px 16px",
+                            color: run.status === "succeeded" ? "var(--success)" : "var(--danger)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {pair.clients[run.clientId]?.displayName ?? truncateMiddle(run.clientId, 8, 0)} · {run.status === "succeeded" ? "Funded" : "Blocked"}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody style={{ fontSize: "0.8125rem", fontFamily: "var(--font-mono)" }}>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Run ID
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td key={run.runId} style={{ padding: "12px 16px", color: "var(--ink)" }}>
+                          <code>{truncateMiddle(run.runId, 8, 0)}</code>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Wallet Address
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td key={run.runId} style={{ padding: "12px 16px", color: "var(--ink)", fontSize: "0.75rem" }}>
+                          <code>{pair.receipts[run.runId]?.clientWallet ?? pair.clients[run.clientId]?.walletAddress}</code>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Run Status
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td
+                          key={run.runId}
+                          style={{
+                            padding: "12px 16px",
+                            color: run.status === "succeeded" ? "var(--success)" : "var(--danger)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {RUN_STATUS_LABEL[run.status] ?? run.status}
+                          {run.errorCode && (
+                            <div style={{ fontSize: "0.6875rem", color: "var(--ink-muted)", fontWeight: 400, marginTop: 2 }}>
+                              {run.errorCode}
+                            </div>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Gateway Status
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td
+                          key={run.runId}
+                          style={{
+                            padding: "12px 16px",
+                            color: run.upstreamStatus !== null && run.upstreamStatus < 400 ? "var(--success)" : run.upstreamStatus !== null ? "var(--danger)" : "var(--ink-muted)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {run.upstreamStatus !== null ? `HTTP ${run.upstreamStatus}` : "none"}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Generation ID
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td key={run.runId} style={{ padding: "12px 16px", color: "var(--ink-muted)", fontSize: "0.75rem" }}>
+                          {run.generationId ?? "none"}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Balance Before
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td key={run.runId} style={{ padding: "12px 16px", color: "var(--ink)" }}>
+                          {run.balanceBefore !== null ? `$${run.balanceBefore}` : "n/a"}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Cost
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td key={run.runId} style={{ padding: "12px 16px", color: run.costUsd ? "var(--danger)" : "var(--ink-muted)" }}>
+                          {run.costUsd ? `-$${run.costUsd}` : "$0.000000 (No Charge)"}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Balance After
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td
+                          key={run.runId}
+                          style={{
+                            padding: "12px 16px",
+                            color: run.status === "succeeded" ? "var(--success)" : "var(--ink)",
+                            fontWeight: run.status === "succeeded" ? 600 : 400,
+                          }}
+                        >
+                          {run.balanceAfter !== null ? `$${run.balanceAfter}` : "n/a"}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Receipt
+                      </td>
+                      {orderedRuns.map((run) => (
+                        <td key={run.runId} style={{ padding: "12px 16px" }}>
+                          {pair.receipts[run.runId]?.reconciled ? (
+                            <span style={{ color: "var(--success)", fontWeight: 600 }}>RECONCILED</span>
+                          ) : (
+                            <span style={{ color: "var(--ink-muted)" }}>{pair.receipts[run.runId] ? "recorded" : "unavailable"}</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Onchain Evidence */}
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                overflow: "hidden",
+                backgroundColor: "var(--surface)",
+                padding: "20px 22px",
+                marginBottom: 28,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                <div>
+                  <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: "var(--ink)" }}>
+                    Onchain Evidence
+                  </h2>
+                  <p style={{ margin: "3px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
+                    Transaction and contract artifacts verifiable on the public explorer
+                  </p>
+                </div>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.6875rem",
+                    color: "var(--ink-muted)",
+                    backgroundColor: "var(--canvas)",
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  Robinhood Chain 4663
+                </span>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    backgroundColor: "var(--canvas)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ minWidth: 260, flex: "1 1 auto" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 600, fontSize: "0.8125rem", color: "var(--ink)" }}>
+                        CREDIT Contract
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "0.75rem",
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--ink-muted)",
+                          backgroundColor: "var(--surface)",
+                          padding: "1px 6px",
+                          borderRadius: 3,
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        {truncateMiddle(CREDIT_CONTRACT_ADDRESS, 10, 8)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--ink-muted)", marginTop: 4 }}>
+                      ERC-20 CREDIT token · activate() burns CREDIT into activated inference balance
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <a
+                      href={`https://robin.etherscan.io/address/${CREDIT_CONTRACT_ADDRESS}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        backgroundColor: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        color: "var(--ink)",
+                        padding: "5px 10px",
+                        borderRadius: 4,
+                        fontSize: "0.75rem",
+                        fontWeight: 500,
+                        textDecoration: "none",
+                      }}
+                    >
+                      <span>View on Explorer</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(CREDIT_CONTRACT_ADDRESS)}
+                      style={{
+                        backgroundColor: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        color: "var(--ink-muted)",
+                        padding: "5px 10px",
+                        borderRadius: 4,
+                        fontSize: "0.75rem",
+                        fontFamily: "var(--font-mono)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {copiedHash === CREDIT_CONTRACT_ADDRESS ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+
+                {orderedRuns.map((run) => {
+                  const receipt = pair.receipts[run.runId];
+                  if (!receipt?.activationTxHash) return null;
+                  const name = pair.clients[run.clientId]?.displayName ?? "Client";
+                  return (
+                    <div
+                      key={run.runId}
+                      style={{
+                        padding: "12px 14px",
+                        backgroundColor: "var(--canvas)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ minWidth: 260, flex: "1 1 auto" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 600, fontSize: "0.8125rem", color: "var(--ink)" }}>
+                            {name} Activation
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.75rem",
+                              fontFamily: "var(--font-mono)",
+                              color: "var(--ink-muted)",
+                              backgroundColor: "var(--surface)",
+                              padding: "1px 6px",
+                              borderRadius: 3,
+                              border: "1px solid var(--border)",
+                            }}
+                          >
+                            {truncateMiddle(receipt.activationTxHash, 10, 8)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--ink-muted)", marginTop: 4 }}>
+                          activate() transaction funding this client&apos;s inference balance
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {receipt.activationExplorerUrl && (
+                          <a
+                            href={receipt.activationExplorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              backgroundColor: "var(--surface)",
+                              border: "1px solid var(--border)",
+                              color: "var(--ink)",
+                              padding: "5px 10px",
+                              borderRadius: 4,
+                              fontSize: "0.75rem",
+                              fontWeight: 500,
+                              textDecoration: "none",
+                            }}
+                          >
+                            <span>View on Explorer</span>
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(receipt.activationTxHash!)}
+                          style={{
+                            backgroundColor: "var(--surface)",
+                            border: "1px solid var(--border)",
+                            color: "var(--ink-muted)",
+                            padding: "5px 10px",
+                            borderRadius: 4,
+                            fontSize: "0.75rem",
+                            fontFamily: "var(--font-mono)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {copiedHash === receipt.activationTxHash ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Receipt links */}
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                backgroundColor: "var(--surface)",
+                padding: "14px 20px",
+                marginBottom: 28,
+              }}
+            >
+              <h2 style={{ fontSize: "0.9375rem", fontWeight: 550, margin: "0 0 10px", color: "var(--ink)" }}>
+                Public Receipt Endpoints
+              </h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                {orderedRuns.map((run) => (
+                  <div key={run.runId} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <a
+                      href={`/api/runs/${run.runId}/receipt`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "var(--link)", textDecoration: "none" }}
+                    >
+                      /api/runs/{truncateMiddle(run.runId, 8, 0)}/receipt
+                    </a>
+                    <span style={{ color: "var(--ink-subtle)" }}>
+                      · {pair.clients[run.clientId]?.displayName ?? "client"} · {run.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ textAlign: "center", paddingTop: 8 }}>
+              <p style={{ fontSize: "0.6875rem", color: "var(--ink-subtle)", fontFamily: "var(--font-mono)", margin: 0 }}>
+                Live data · Robinhood Chain 4663 · Orbio Gateway · receipts pass the strict public allowlist
+              </p>
+            </div>
+          </>
+        )}
       </main>
     </div>
+  );
+}
+
+export default function ProofPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", backgroundColor: "var(--canvas)" }} />}>
+      <ProofInner />
+    </Suspense>
   );
 }

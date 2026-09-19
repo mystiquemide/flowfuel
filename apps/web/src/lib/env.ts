@@ -21,6 +21,12 @@ export function credentialEncryptionKey(): Buffer {
   return cachedKey;
 }
 
+export function robinhoodRpcUrlFromEnv(): string {
+  return (
+    process.env.ROBINHOOD_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com"
+  );
+}
+
 export function workflowTokenFromEnv(): string {
   const token = process.env.FLOWFUEL_WORKFLOW_TOKEN;
   if (!token) {

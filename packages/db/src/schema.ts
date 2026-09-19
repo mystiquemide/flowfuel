@@ -24,6 +24,8 @@ export const noncePurposeEnum = pgEnum("nonce_purpose", [
   "connect",
   "register_credential",
   "rotate_credential",
+  "pause_client",
+  "revoke_credential",
 ]);
 
 export const activationStatusEnum = pgEnum("activation_status", [

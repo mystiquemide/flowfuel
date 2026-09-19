@@ -6,6 +6,7 @@ import {
   noncePurposeSchema,
   sha256HexSchema,
   taskSchema,
+  transactionHashSchema,
   uuidSchema,
   walletAddressSchema,
 } from "./schemas";
@@ -59,6 +60,42 @@ export const credentialStatusResponseSchema = z.strictObject({
 });
 export type CredentialStatusResponse = z.infer<
   typeof credentialStatusResponseSchema
+>;
+
+export const createClientRequestSchema = z.strictObject({
+  displayName: z.string().min(1).max(120),
+  walletAddress: walletAddressSchema,
+  slug: z
+    .string()
+    .min(2)
+    .max(64)
+    .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, "Slug must be lowercase alphanumeric with dashes")
+    .optional(),
+});
+export type CreateClientRequest = z.infer<typeof createClientRequestSchema>;
+
+export const recordActivationRequestSchema = z.strictObject({
+  transactionHash: transactionHashSchema,
+});
+export type RecordActivationRequest = z.infer<
+  typeof recordActivationRequestSchema
+>;
+
+export const updateClientStatusRequestSchema = z.strictObject({
+  status: z.enum(["paused", "ready"]),
+  nonce: uuidSchema,
+  signature: signatureSchema,
+});
+export type UpdateClientStatusRequest = z.infer<
+  typeof updateClientStatusRequestSchema
+>;
+
+export const revokeCredentialRequestSchema = z.strictObject({
+  nonce: uuidSchema,
+  signature: signatureSchema,
+});
+export type RevokeCredentialRequest = z.infer<
+  typeof revokeCredentialRequestSchema
 >;
 
 export const runRequestSchema = z.strictObject({

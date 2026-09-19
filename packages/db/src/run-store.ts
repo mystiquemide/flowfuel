@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { isUniqueViolation } from "./client-store";
 import { runs, type RunRow } from "./schema";
@@ -82,6 +82,34 @@ export function createRunStore(db: Db) {
         .where(eq(runs.clientId, clientId))
         .orderBy(desc(runs.startedAt))
         .limit(limit);
+    },
+
+    async listByWorkflowRunId(workflowRunId: string): Promise<RunRow[]> {
+      return db
+        .select()
+        .from(runs)
+        .where(eq(runs.workflowRunId, workflowRunId))
+        .orderBy(desc(runs.startedAt));
+    },
+
+    async listRecent(limit = 50, clientId?: string): Promise<RunRow[]> {
+      const query = db
+        .select()
+        .from(runs)
+        .orderBy(desc(runs.startedAt))
+        .limit(limit);
+      if (clientId) {
+        return query.where(eq(runs.clientId, clientId));
+      }
+      return query;
+    },
+
+    async sumSucceededCost(clientId: string): Promise<number> {
+      const rows = await db
+        .select({ total: sql<string>`coalesce(sum(${runs.costUsd}), 0)` })
+        .from(runs)
+        .where(and(eq(runs.clientId, clientId), eq(runs.status, "succeeded")));
+      return Number(rows[0]?.total ?? 0);
     },
 
     /**

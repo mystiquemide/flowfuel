@@ -56,6 +56,8 @@ export const noncePurposeSchema = z.enum([
   "connect",
   "register_credential",
   "rotate_credential",
+  "pause_client",
+  "revoke_credential",
 ]);
 export type NoncePurpose = z.infer<typeof noncePurposeSchema>;
 
@@ -158,6 +160,9 @@ export const AUDIT_EVENT_TYPES = [
   "wallet_verified",
   "credential_registered",
   "credential_rotated",
+  "credential_revoked",
+  "client_paused",
+  "client_resumed",
   "activation_recorded",
   "run_succeeded",
   "run_unfunded",

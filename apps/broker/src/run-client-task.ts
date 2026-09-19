@@ -178,6 +178,13 @@ async function executeLocked(
   const existing = await deps.runs.getByIdempotencyKey(key);
   if (existing) return responseFromRun(existing, client);
 
+  if (client.status === "paused") {
+    throw new FlowFuelError(
+      "CLIENT_PAUSED",
+      "Client automation is paused",
+    );
+  }
+
   const limiter = deps.rateLimiter ?? defaultRateLimiter;
   if (!limiter.allow(request.clientId)) {
     throw new FlowFuelError(

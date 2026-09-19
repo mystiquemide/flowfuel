@@ -9,36 +9,94 @@ export default function N8nBrokerDocsPage() {
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   const sampleWorkflow = {
-    name: "FlowFuel Two-Client Invariant Workflow",
+    name: "FlowFuel client-funded agent",
     nodes: [
       {
         parameters: {
-          path: "flowfuel-task",
-          responseMode: "lastNode",
+          httpMethod: "POST",
+          path: "flowfuel-run",
+          responseMode: "responseNode",
+          options: {},
         },
-        name: "Webhook Trigger",
+        name: "Webhook",
         type: "n8n-nodes-base.webhook",
-        position: [240, 300],
+        typeVersion: 2,
+        position: [-520, 300],
       },
       {
         parameters: {
-          url: "https://broker.flowfuel.io/v1/chat/completions",
+          jsCode:
+            "const body = $json.body ?? {};\nconst clientIds = Array.isArray(body.clientIds) && body.clientIds.length > 0\n  ? body.clientIds\n  : [body.clientId];\nconst input = String(body.input).slice(0, 8000);\nconst maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 256, 1), 1024);\nreturn clientIds.map((clientId) => ({\n  json: {\n    clientId,\n    workflowRunId: String($execution.id),\n    task: { type: \"lead_summary\", input },\n    model: \"google/gemini-2.5-flash\",\n    maxOutputTokens,\n  },\n}));",
+        },
+        name: "Build Run Request",
+        type: "n8n-nodes-base.code",
+        typeVersion: 2,
+        position: [-300, 300],
+      },
+      {
+        parameters: {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-FlowFuel-Client": "={{ $json.clientId }}",
+          url: "={{ $env.FLOWFUEL_BROKER_URL }}/api/runs",
+          sendHeaders: true,
+          headerParameters: {
+            parameters: [
+              {
+                name: "Authorization",
+                value: "=Bearer {{ $env.FLOWFUEL_WORKFLOW_TOKEN }}",
+              },
+              {
+                name: "Content-Type",
+                value: "application/json",
+              },
+            ],
           },
-          bodyParameters: {
-            model: "orbio/deepseek-v3",
-            prompt: "={{ $json.prompt }}",
+          sendBody: true,
+          specifyBody: "json",
+          jsonBody: "={{ $json }}",
+          options: {
+            response: { response: { neverError: true, fullResponse: false } },
+            timeout: 60000,
           },
         },
-        name: "FlowFuel Client-Isolated Broker",
+        name: "FlowFuel Run",
         type: "n8n-nodes-base.httpRequest",
-        position: [480, 300],
+        typeVersion: 4.2,
+        position: [-60, 300],
+      },
+      {
+        parameters: {
+          respondWith: "json",
+          responseBody:
+            "={{ JSON.stringify({ runId: $json.runId, status: $json.status, receipt: $json.receipt ?? null, error: $json.error ?? null }) }}",
+          options: {},
+        },
+        name: "Respond",
+        type: "n8n-nodes-base.respondToWebhook",
+        typeVersion: 1.1,
+        position: [200, 300],
       },
     ],
+    connections: {
+      Webhook: { main: [[{ node: "Build Run Request", type: "main", index: 0 }]] },
+      "Build Run Request": { main: [[{ node: "FlowFuel Run", type: "main", index: 0 }]] },
+      "FlowFuel Run": { main: [[{ node: "Respond", type: "main", index: 0 }]] },
+    },
+    settings: { executionOrder: "v1" },
   };
+
+  const requestSnippet = `POST {{FLOWFUEL_BROKER_URL}}/api/runs
+Headers:
+  Authorization: Bearer {{FLOWFUEL_WORKFLOW_TOKEN}}
+  Content-Type: application/json
+
+Body:
+{
+  "clientId": "{{ $json.clientId }}",
+  "workflowRunId": "{{ $execution.id }}",
+  "task": { "type": "lead_summary", "input": "{{ $json.input }}" },
+  "model": "google/gemini-2.5-flash",
+  "maxOutputTokens": 256
+}`;
 
   const handleDownload = () => {
     const blob = new Blob([JSON.stringify(sampleWorkflow, null, 2)], { type: "application/json" });
@@ -53,17 +111,7 @@ export default function N8nBrokerDocsPage() {
   };
 
   const handleCopySnippet = () => {
-    navigator.clipboard.writeText(`POST https://broker.flowfuel.io/v1/chat/completions
-Headers:
-  Content-Type: application/json
-  X-FlowFuel-Client: {{ $json.clientId }}
-
-Body:
-{
-  "model": "orbio/deepseek-v3",
-  "messages": [{"role": "user", "content": "{{ $json.prompt }}"}],
-  "idempotencyKey": "n8n-{{ $execution.id }}"
-}`);
+    navigator.clipboard.writeText(requestSnippet);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2500);
   };
@@ -208,7 +256,8 @@ Body:
             </h3>
             <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.5, margin: "0 0 16px" }}>
               In your n8n workflow canvas, replace direct model API calls with an HTTP Request node
-              pointing to FlowFuel. Pass the client public identifier in the <code>X-FlowFuel-Client</code> header.
+              pointing to FlowFuel. Authenticate with the shared workflow Bearer token and pass the
+              client public identifier in the request body.
             </p>
             <button
               onClick={handleCopySnippet}
@@ -239,19 +288,7 @@ Body:
                 color: "var(--ink)",
               }}
             >
-{`POST https://broker.flowfuel.io/v1/chat/completions
-Headers:
-  Content-Type: application/json
-  X-FlowFuel-Client: {{ $json.clientId }}
-
-Body:
-{
-  "model": "orbio/deepseek-v3",
-  "messages": [
-    { "role": "user", "content": "{{ $json.prompt }}" }
-  ],
-  "idempotencyKey": "n8n-{{ $execution.id }}"
-}`}
+{requestSnippet}
             </pre>
           </div>
 
@@ -268,8 +305,9 @@ Body:
             </h3>
             <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.5, margin: 0 }}>
               FlowFuel acquires an in-memory client lock during inference to prevent parallel branches from
-              exceeding activated balance limits. The <code>idempotencyKey</code> ensures that retried n8n runs
-              return the cached transaction receipt rather than billing the client wallet twice.
+              exceeding activated balance limits. Retries that reuse the same <code>workflowRunId</code> and
+              client return the cached run receipt instead of billing the client wallet twice, so n8n
+              retries are safe by default.
             </p>
           </div>
 
@@ -285,9 +323,10 @@ Body:
               3. The Strict No-Fallback Invariant
             </h3>
             <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.5, margin: 0 }}>
-              If a client allowance is exhausted or unactivated, FlowFuel stops execution immediately with
-              HTTP 401/402. The broker will never fall back to an agency master key or another client balance.
-              Your agency balance is safe at all times.
+              If a client allowance is exhausted or unactivated, FlowFuel stops execution and returns
+              HTTP 422 with status <code>client_unfunded</code> or <code>quota_exceeded</code>. The broker
+              will never fall back to an agency master key or another client balance. Paused clients are
+              rejected with HTTP 403 before any provider call.
             </p>
           </div>
         </div>

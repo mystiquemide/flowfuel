@@ -1,10 +1,88 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { FlowFuelLogo } from "@/components/flowfuel-logo";
+import { truncateMiddle } from "@/lib/browser";
+
+interface LiveClient {
+  id: string;
+  displayName: string;
+  walletAddress: string;
+  status: string;
+  activatedBalance: string | null;
+  totalSpentUsd: string;
+}
+
+interface LiveRun {
+  runId: string;
+  clientId: string;
+  clientName: string | null;
+  status: string;
+  taskHash: string;
+  workflowRunId: string | null;
+  generationId: string | null;
+  balanceBefore: string | null;
+  balanceAfter: string | null;
+  costUsd: string | null;
+  upstreamStatus: number | null;
+}
+
+const STATUS_PILL: Record<string, { label: string; color: string; bg: string }> = {
+  ready: { label: "READY · FUNDED", color: "var(--success)", bg: "rgba(22, 163, 74, 0.1)" },
+  unfunded: { label: "STOPPED · NO BALANCE", color: "var(--danger)", bg: "rgba(220, 38, 38, 0.1)" },
+  paused: { label: "PAUSED", color: "var(--warning)", bg: "rgba(217, 119, 6, 0.1)" },
+  revoked: { label: "REVOKED", color: "var(--danger)", bg: "rgba(220, 38, 38, 0.1)" },
+  pending: { label: "PENDING SETUP", color: "var(--ink-muted)", bg: "rgba(150, 147, 139, 0.1)" },
+};
 
 export default function Home() {
+  const [liveClients, setLiveClients] = useState<LiveClient[] | null>(null);
+  const [liveRuns, setLiveRuns] = useState<LiveRun[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [clientsRes, runsRes] = await Promise.all([
+          fetch("/api/clients", { cache: "no-store" }),
+          fetch("/api/runs?limit=25", { cache: "no-store" }),
+        ]);
+        if (!clientsRes.ok || !runsRes.ok) return;
+        const clientsBody = (await clientsRes.json()) as { clients: LiveClient[] };
+        const runsBody = (await runsRes.json()) as { runs: LiveRun[] };
+        if (cancelled) return;
+        setLiveClients(clientsBody.clients);
+        setLiveRuns(runsBody.runs);
+      } catch {
+        // Landing shows an honest empty state when live data is unreachable.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Latest workflow pair: the newest workflowRunId with a succeeded and a
+  // blocked sibling. Falls back to the two most recent runs.
+  const proofPair = (() => {
+    if (!liveRuns || liveRuns.length === 0) return null;
+    const groups = new Map<string, LiveRun[]>();
+    for (const run of liveRuns) {
+      if (!run.workflowRunId) continue;
+      const g = groups.get(run.workflowRunId) ?? [];
+      g.push(run);
+      groups.set(run.workflowRunId, g);
+    }
+    for (const members of groups.values()) {
+      const ok = members.find((m) => m.status === "succeeded");
+      const blocked = members.find((m) => m.status !== "succeeded" && m.status !== "running");
+      if (ok && blocked) return { ok, blocked };
+    }
+    if (liveRuns.length < 2) return null;
+    return { ok: liveRuns[0]!, blocked: liveRuns[1]! };
+  })();
+
   useEffect(() => {
     // Arm smooth motion
     document.body.classList.add("js-motion");
@@ -338,11 +416,11 @@ export default function Home() {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
                 <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", color: "var(--fuel)", fontWeight: 600 }}>
-                  CENTRAL N8N ROUTER
+                  SHARED N8N WORKFLOW
                 </span>
                 <span style={{ color: "var(--border)" }}>/</span>
                 <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", color: "var(--ink-muted)" }}>
-                  agy_orch_9842f
+                  Live client registry
                 </span>
               </div>
               <h3 style={{ fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)", margin: 0, letterSpacing: "-0.02em" }}>
@@ -356,7 +434,9 @@ export default function Home() {
               </div>
               <div style={{ padding: "4px 10px", borderRadius: 4, backgroundColor: "var(--surface)", border: "1px solid var(--border)" }}>
                 <span style={{ color: "var(--ink-muted)" }}>Active Clients: </span>
-                <strong style={{ color: "var(--ink)" }}>3 Connected</strong>
+                <strong style={{ color: "var(--ink)" }}>
+                  {liveClients === null ? "…" : `${liveClients.length} Connected`}
+                </strong>
               </div>
             </div>
           </div>
@@ -377,115 +457,68 @@ export default function Home() {
                 >
                   <th style={{ padding: "10px 16px" }}>CLIENT NAME</th>
                   <th style={{ padding: "10px 16px" }}>WALLET IDENTITY</th>
-                  <th style={{ padding: "10px 16px" }}>ACTIVATED CAP</th>
+                  <th style={{ padding: "10px 16px" }}>ACTIVATED BALANCE</th>
                   <th style={{ padding: "10px 16px" }}>INFERENCE USED</th>
-                  <th style={{ padding: "10px 16px" }}>AVAILABLE BALANCE</th>
                   <th style={{ padding: "10px 16px" }}>INFERENCE STATUS</th>
                 </tr>
               </thead>
               <tbody>
-                <tr style={{ borderBottom: "1px solid var(--border)", backgroundColor: "var(--canvas)" }}>
-                  <td style={{ padding: "12px 16px", fontWeight: 500, color: "var(--ink)" }}>
-                    Acme Corp (Client A)
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
-                    <code>0x78A4...8c2F</code>
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
-                    $0.010000
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--danger)" }}>
-                    -$0.000225
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--success)" }}>
-                    <span className="preview-data-highlight">$0.009775</span>
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <span
-                      className="preview-status-pill preview-status-1"
+                {liveClients === null && (
+                  <tr>
+                    <td colSpan={5} style={{ padding: "14px 16px", fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
+                      Loading live client data…
+                    </td>
+                  </tr>
+                )}
+                {liveClients !== null && liveClients.length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ padding: "14px 16px", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
+                      No clients connected yet. The agency workspace creates the first record.
+                    </td>
+                  </tr>
+                )}
+                {liveClients?.map((client, i) => {
+                  const pill = STATUS_PILL[client.status] ?? STATUS_PILL.pending!;
+                  return (
+                    <tr
+                      key={client.id}
                       style={{
-                        fontSize: "0.6875rem",
-                        fontFamily: "var(--font-mono)",
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        fontWeight: 600,
-                        backgroundColor: "rgba(22, 163, 74, 0.1)",
-                        color: "var(--success)",
-                        display: "inline-block",
+                        borderBottom: i < liveClients.length - 1 ? "1px solid var(--border)" : "none",
+                        backgroundColor: client.status === "unfunded" ? "rgba(220, 38, 38, 0.02)" : "var(--canvas)",
                       }}
                     >
-                      ACTIVE · 200 OK
-                    </span>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: "1px solid var(--border)", backgroundColor: "rgba(220, 38, 38, 0.02)" }}>
-                  <td style={{ padding: "12px 16px", fontWeight: 500, color: "var(--ink)" }}>
-                    Beta Group (Client B)
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
-                    <code>0xA023...3CEC</code>
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--ink-muted)" }}>
-                    $0.000000
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--ink-muted)" }}>
-                    $0.000000
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--ink-subtle)" }}>
-                    $0.000000
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <span
-                      className="preview-status-pill preview-status-2"
-                      style={{
-                        fontSize: "0.6875rem",
-                        fontFamily: "var(--font-mono)",
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        fontWeight: 600,
-                        backgroundColor: "rgba(220, 38, 38, 0.1)",
-                        color: "var(--danger)",
-                        display: "inline-block",
-                      }}
-                    >
-                      STOPPED · NO BALANCE
-                    </span>
-                  </td>
-                </tr>
-                <tr style={{ backgroundColor: "var(--canvas)" }}>
-                  <td style={{ padding: "12px 16px", fontWeight: 500, color: "var(--ink)" }}>
-                    Crest Labs (Client C)
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
-                    <code>0x41f8...12dE</code>
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
-                    $0.050000
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--ink-muted)" }}>
-                    $0.000000
-                  </td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--ink)" }}>
-                    $0.050000
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <span
-                      className="preview-status-pill preview-status-3"
-                      style={{
-                        fontSize: "0.6875rem",
-                        fontFamily: "var(--font-mono)",
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        fontWeight: 600,
-                        backgroundColor: "rgba(217, 119, 6, 0.1)",
-                        color: "var(--warning)",
-                        display: "inline-block",
-                      }}
-                    >
-                      READY · ALLOWANCE SET
-                    </span>
-                  </td>
-                </tr>
+                      <td style={{ padding: "12px 16px", fontWeight: 500, color: "var(--ink)" }}>
+                        {client.displayName}
+                      </td>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
+                        <code>{truncateMiddle(client.walletAddress, 6, 4)}</code>
+                      </td>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
+                        {client.activatedBalance !== null ? `$${client.activatedBalance}` : "n/a"}
+                      </td>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: Number(client.totalSpentUsd) > 0 ? "var(--danger)" : "var(--ink-muted)" }}>
+                        -${client.totalSpentUsd}
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span
+                          className={`preview-status-pill preview-status-${i + 1}`}
+                          style={{
+                            fontSize: "0.6875rem",
+                            fontFamily: "var(--font-mono)",
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            fontWeight: 600,
+                            backgroundColor: pill.bg,
+                            color: pill.color,
+                            display: "inline-block",
+                          }}
+                        >
+                          {pill.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -507,8 +540,8 @@ export default function Home() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: "var(--fuel)", fontWeight: 600 }}>n8n Node Header:</span>
-              <code>X-FlowFuel-Client: &#123;&#123; $json.clientId &#125;&#125;</code>
+              <span style={{ color: "var(--fuel)", fontWeight: 600 }}>n8n Call:</span>
+              <code>POST /api/runs &#183; clientId: &#123;&#123; $json.clientId &#125;&#125;</code>
             </div>
             <div>
               <span style={{ color: "var(--ink)" }}>Central Router:</span> Every client balance is isolated. Unfunded runs stop before model usage.
@@ -553,7 +586,7 @@ export default function Home() {
               One Workflow. Two Clients. Separate Balances.
             </h2>
             <p style={{ color: "var(--ink-muted)", fontSize: "1.0625rem", maxWidth: 640 }}>
-              The same n8n workflow runs for two different clients. Client A has an active balance and executes normally. Client B has no active balance and stops before inference is consumed.
+              The same n8n workflow runs for two different clients. A funded client executes normally. An unfunded client stops before inference is consumed.
             </p>
           </div>
 
@@ -564,7 +597,26 @@ export default function Home() {
               gap: 24,
             }}
           >
-            {/* Client A Card */}
+            {proofPair === null && (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  padding: "24px",
+                  backgroundColor: "var(--canvas)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.8125rem",
+                  color: "var(--ink-muted)",
+                }}
+              >
+                {liveRuns === null ? "Loading live run data…" : "No runs recorded yet. Run the workflow to produce the first receipt."}
+              </div>
+            )}
+
+            {proofPair && (
+              <>
+            {/* Funded card */}
             <div
               className="proof-card-item proof-card-a"
               style={{
@@ -585,7 +637,7 @@ export default function Home() {
                 }}
               >
                 <span style={{ fontWeight: 550, fontSize: "1.0625rem", color: "var(--ink)" }}>
-                  Client A · Funded
+                  {proofPair.ok.clientName ?? "Client"} · Funded
                 </span>
                 <span
                   className="card-status-pill"
@@ -600,7 +652,7 @@ export default function Home() {
                     display: "inline-block",
                   }}
                 >
-                  200 OK SUCCESS
+                  {proofPair.ok.upstreamStatus ? `${proofPair.ok.upstreamStatus} OK` : "SUCCEEDED"}
                 </span>
               </div>
 
@@ -614,20 +666,24 @@ export default function Home() {
                 }}
               >
                 <div>
-                  <span style={{ color: "var(--ink-muted)" }}>Wallet:</span>{" "}
-                  <code style={{ color: "var(--ink)" }}>0x78A4e72C...d9C8c2F</code>
+                  <span style={{ color: "var(--ink-muted)" }}>Run:</span>{" "}
+                  <code style={{ color: "var(--ink)" }}>{truncateMiddle(proofPair.ok.runId, 8, 0)}</code>
                 </div>
                 <div>
-                  <span style={{ color: "var(--ink-muted)" }}>Activation ID:</span>{" "}
-                  <code style={{ color: "var(--ink)" }}>#200 (Tx: 0x229f5abb...)</code>
+                  <span style={{ color: "var(--ink-muted)" }}>Generation:</span>{" "}
+                  <code style={{ color: "var(--ink)" }}>{proofPair.ok.generationId ?? "none"}</code>
                 </div>
                 <div>
-                  <span style={{ color: "var(--ink-muted)" }}>Initial Allowance:</span>{" "}
-                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>$0.010000</span>
+                  <span style={{ color: "var(--ink-muted)" }}>Balance before:</span>{" "}
+                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                    {proofPair.ok.balanceBefore !== null ? `$${proofPair.ok.balanceBefore}` : "n/a"}
+                  </span>
                 </div>
                 <div>
                   <span style={{ color: "var(--ink-muted)" }}>Inference Used:</span>{" "}
-                  <span style={{ color: "var(--danger)", fontWeight: 500 }}>-$0.000225</span>
+                  <span style={{ color: "var(--danger)", fontWeight: 500 }}>
+                    {proofPair.ok.costUsd ? `-$${proofPair.ok.costUsd}` : "$0.000000"}
+                  </span>
                 </div>
                 <div
                   style={{
@@ -637,18 +693,20 @@ export default function Home() {
                     marginTop: 4,
                   }}
                 >
-                  <span style={{ color: "var(--ink-muted)" }}>Available Balance:</span>{" "}
-                  <strong style={{ color: "var(--success)", fontSize: "1rem" }}>$0.009775</strong>
+                  <span style={{ color: "var(--ink-muted)" }}>Balance after:</span>{" "}
+                  <strong style={{ color: "var(--success)", fontSize: "1rem" }}>
+                    {proofPair.ok.balanceAfter !== null ? `$${proofPair.ok.balanceAfter}` : "n/a"}
+                  </strong>
                 </div>
                 <div>
-                  <span style={{ color: "var(--ink-muted)" }}>n8n Output:</span>{" "}
-                  <code style={{ color: "var(--success)" }}>N8N_CLIENT_A_OK</code>
+                  <span style={{ color: "var(--ink-muted)" }}>Task hash:</span>{" "}
+                  <code style={{ color: "var(--ink-muted)", fontSize: "0.75rem" }}>{truncateMiddle(proofPair.ok.taskHash, 12, 8)}</code>
                 </div>
               </div>
 
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
                 <Link
-                  href="/proof"
+                  href={`/proof?run=${proofPair.ok.runId}`}
                   style={{
                     fontSize: "0.875rem",
                     fontWeight: 500,
@@ -684,7 +742,7 @@ export default function Home() {
                 }}
               >
                 <span style={{ fontWeight: 550, fontSize: "1.0625rem", color: "var(--ink)" }}>
-                  Client B · No Balance
+                  {proofPair.blocked.clientName ?? "Client"} · Blocked
                 </span>
                 <span
                   className="card-status-pill"
@@ -699,7 +757,9 @@ export default function Home() {
                     display: "inline-block",
                   }}
                 >
-                  STOPPED · NO BALANCE
+                  {proofPair.blocked.upstreamStatus
+                    ? `${proofPair.blocked.upstreamStatus} · ${proofPair.blocked.status.toUpperCase()}`
+                    : proofPair.blocked.status.toUpperCase()}
                 </span>
               </div>
 
@@ -714,23 +774,31 @@ export default function Home() {
               >
                 <div>
                   <span style={{ color: "var(--ink-muted)" }}>Execution State:</span>{" "}
-                  <strong style={{ color: "var(--danger)" }}>Stopped · No active allowance</strong>
+                  <strong style={{ color: "var(--danger)" }}>
+                    {proofPair.blocked.status === "client_unfunded"
+                      ? "Stopped · No activated balance"
+                      : `Stopped · ${proofPair.blocked.status.replace(/_/g, " ")}`}
+                  </strong>
                 </div>
                 <div>
-                  <span style={{ color: "var(--ink-muted)" }}>Wallet:</span>{" "}
-                  <code style={{ color: "var(--ink)" }}>0xA0234103...08373CEC</code>
+                  <span style={{ color: "var(--ink-muted)" }}>Run:</span>{" "}
+                  <code style={{ color: "var(--ink)" }}>{truncateMiddle(proofPair.blocked.runId, 8, 0)}</code>
                 </div>
                 <div>
-                  <span style={{ color: "var(--ink-muted)" }}>Activation Status:</span>{" "}
-                  <code style={{ color: "var(--ink)" }}>None (Unactivated)</code>
+                  <span style={{ color: "var(--ink-muted)" }}>Generation:</span>{" "}
+                  <code style={{ color: "var(--ink)" }}>{proofPair.blocked.generationId ?? "none"}</code>
                 </div>
                 <div>
-                  <span style={{ color: "var(--ink-muted)" }}>Initial Allowance:</span>{" "}
-                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>$0.000000</span>
+                  <span style={{ color: "var(--ink-muted)" }}>Balance before:</span>{" "}
+                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                    {proofPair.blocked.balanceBefore !== null ? `$${proofPair.blocked.balanceBefore}` : "n/a"}
+                  </span>
                 </div>
                 <div>
                   <span style={{ color: "var(--ink-muted)" }}>Inference Used:</span>{" "}
-                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>$0.000000 (No Charge)</span>
+                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                    {proofPair.blocked.costUsd ? `$${proofPair.blocked.costUsd}` : "$0.000000"} (No Charge)
+                  </span>
                 </div>
                 <div
                   style={{
@@ -740,18 +808,28 @@ export default function Home() {
                     marginTop: 4,
                   }}
                 >
-                  <span style={{ color: "var(--ink-muted)" }}>Available Balance:</span>{" "}
-                  <strong style={{ color: "var(--ink-subtle)", fontSize: "1rem" }}>$0.000000</strong>
+                  <span style={{ color: "var(--ink-muted)" }}>Balance after:</span>{" "}
+                  <strong style={{ color: "var(--ink-subtle)", fontSize: "1rem" }}>
+                    {proofPair.blocked.balanceAfter !== null ? `$${proofPair.blocked.balanceAfter}` : "n/a"}
+                  </strong>
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "var(--ink-subtle)", paddingTop: 2 }}>
-                  <span style={{ color: "var(--ink-muted)" }}>Raw Gateway Response:</span>{" "}
-                  <code>401 invalid_api_key</code>
+                  <span style={{ color: "var(--ink-muted)" }}>Upstream response:</span>{" "}
+                  <code>
+                    {proofPair.blocked.upstreamStatus
+                      ? `${proofPair.blocked.upstreamStatus} ${proofPair.blocked.status}`
+                      : proofPair.blocked.status}
+                  </code>
+                </div>
+                <div>
+                  <span style={{ color: "var(--ink-muted)" }}>Task hash:</span>{" "}
+                  <code style={{ color: "var(--ink-muted)", fontSize: "0.75rem" }}>{truncateMiddle(proofPair.blocked.taskHash, 12, 8)}</code>
                 </div>
               </div>
 
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
                 <Link
-                  href="/proof"
+                  href={`/proof?run=${proofPair.blocked.runId}`}
                   style={{
                     fontSize: "0.875rem",
                     fontWeight: 500,
@@ -765,6 +843,8 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+              </>
+            )}
           </div>
         </div>
       </section>

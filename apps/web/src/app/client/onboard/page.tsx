@@ -1,35 +1,181 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { getAddress } from "viem";
+import { ROBINHOOD_CHAIN_ID } from "@flowfuel/core";
 import { FlowFuelLogo } from "@/components/flowfuel-logo";
+import {
+  activateCredit,
+  connectInjected,
+  injectedChainId,
+  readApiError,
+  requestRobinhoodChain,
+  truncateMiddle,
+  unitsToUsd,
+  usdToUnits,
+} from "@/lib/browser";
 
-export default function ClientOnboardPage() {
-  const [walletConnected, setWalletConnected] = useState<boolean>(true);
-  const [address, setAddress] = useState<string>("0x78A4e72C413B1A91A25D253988BB61258d9C8c2F");
-  const [allowance, setAllowance] = useState<string>("0.010000");
-  const [showSigningDetails, setShowSigningDetails] = useState<boolean>(false);
-  const [isSigning, setIsSigning] = useState<boolean>(false);
-  const [isSigned, setIsSigned] = useState<boolean>(false);
-  const [txHash, setTxHash] = useState<string | null>(null);
+interface ClientDetail {
+  id: string;
+  slug: string;
+  displayName: string;
+  walletAddress: string;
+  status: string;
+  credentialRegistered: boolean;
+  activatedBalance: string | null;
+  transferableCreditUnits: string | null;
+  latestActivation: { transactionHash: string; activationId: number | null } | null;
+}
 
-  const handleConnectWallet = () => {
-    setWalletConnected(true);
-    setAddress("0x78A4e72C413B1A91A25D253988BB61258d9C8c2F");
-  };
+interface ClientListEntry {
+  id: string;
+  slug: string;
+  displayName: string;
+  status: string;
+}
 
-  const handleSignAllowance = () => {
-    setIsSigning(true);
-    setTimeout(() => {
-      setIsSigning(false);
-      setIsSigned(true);
-      setTxHash("0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed");
-    }, 1200);
-  };
+type Phase =
+  | { kind: "idle" }
+  | { kind: "working"; label: string }
+  | { kind: "tx_submitted"; txHash: string }
+  | { kind: "recording"; txHash: string }
+  | { kind: "indexing"; txHash: string; activationId: number | null }
+  | { kind: "done"; txHash: string; activationId: number | null }
+  | { kind: "error"; message: string };
+
+function OnboardInner() {
+  const searchParams = useSearchParams();
+  const clientParam = searchParams.get("client");
+
+  const [clients, setClients] = useState<ClientListEntry[] | null>(null);
+  const [detail, setDetail] = useState<ClientDetail | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [account, setAccount] = useState<`0x${string}` | null>(null);
+  const [chainId, setChainId] = useState<number | null>(null);
+  const [allowance, setAllowance] = useState<string>("");
+  const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+
+  const loadClients = useCallback(async () => {
+    try {
+      const res = await fetch("/api/clients", { cache: "no-store" });
+      if (!res.ok) throw new Error(await readApiError(res));
+      const body = (await res.json()) as { clients: ClientListEntry[] };
+      setClients(body.clients);
+      return body.clients;
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load clients");
+      return null;
+    }
+  }, []);
+
+  const loadDetail = useCallback(async (idOrSlug: string) => {
+    try {
+      const res = await fetch(`/api/clients/${idOrSlug}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(await readApiError(res));
+      const body = (await res.json()) as ClientDetail;
+      setDetail(body);
+      setLoadError(null);
+      return body;
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load client");
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (clientParam) {
+        void loadDetail(clientParam);
+      } else {
+        void loadClients();
+      }
+    });
+  }, [clientParam, loadClients, loadDetail]);
+
+  async function pickClient(id: string) {
+    setDetail(null);
+    setPhase({ kind: "idle" });
+    await loadDetail(id);
+  }
+
+  async function handleConnect() {
+    setPhase({ kind: "working", label: "Connecting wallet" });
+    try {
+      const addr = await connectInjected();
+      setAccount(addr);
+      const chain = await injectedChainId().catch(() => null);
+      setChainId(chain);
+      setPhase({ kind: "idle" });
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Wallet connection failed" });
+    }
+  }
+
+  async function handleSwitchChain() {
+    try {
+      await requestRobinhoodChain();
+      setChainId(await injectedChainId());
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Chain switch failed" });
+    }
+  }
+
+  const transferableUnits = detail?.transferableCreditUnits
+    ? BigInt(detail.transferableCreditUnits)
+    : null;
+  const allowanceUnits = usdToUnits(allowance || "0");
+  const allowanceValid =
+    allowanceUnits > BigInt(0) &&
+    transferableUnits !== null &&
+    allowanceUnits <= transferableUnits;
+  const walletMismatch =
+    account !== null &&
+    detail !== null &&
+    getAddress(account) !== getAddress(detail.walletAddress);
+  const wrongChain = account !== null && chainId !== null && chainId !== ROBINHOOD_CHAIN_ID;
+
+  async function pollForIndex(txHash: string, activationId: number | null) {
+    setPhase({ kind: "indexing", txHash, activationId });
+    const before = detail?.activatedBalance;
+    for (let i = 0; i < 12; i += 1) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const fresh = await loadDetail(clientParam ?? detail!.id);
+      if (fresh && fresh.activatedBalance !== before && fresh.activatedBalance !== null) {
+        setPhase({ kind: "done", txHash, activationId });
+        return;
+      }
+    }
+    // Indexing lag is normal. The activation is on chain and recorded; the
+    // gateway balance catches up asynchronously.
+    setPhase({ kind: "done", txHash, activationId });
+  }
+
+  async function handleActivate() {
+    if (!account || !detail || !allowanceValid) return;
+    try {
+      setPhase({ kind: "working", label: `Confirm activate(${allowance} CREDIT) in your wallet` });
+      const txHash = await activateCredit(account, allowanceUnits);
+      setPhase({ kind: "recording", txHash });
+      const res = await fetch(`/api/clients/${detail.id}/activation`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transactionHash: txHash }),
+      });
+      if (!res.ok) throw new Error(await readApiError(res));
+      const body = (await res.json()) as { activationId: number | null };
+      await pollForIndex(txHash, body.activationId);
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Activation failed" });
+    }
+  }
+
+  const busy = phase.kind === "working" || phase.kind === "tx_submitted" || phase.kind === "recording" || phase.kind === "indexing";
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--canvas)", color: "var(--ink)" }}>
-      {/* Header */}
       <header
         style={{
           borderBottom: "1px solid var(--border)",
@@ -86,7 +232,6 @@ export default function ClientOnboardPage() {
       </header>
 
       <main className="workspace-page-fade" style={{ maxWidth: 860, margin: "0 auto", padding: "48px 24px 60px" }}>
-        {/* Page Framing */}
         <div style={{ marginBottom: 20 }}>
           <span
             style={{
@@ -118,49 +263,188 @@ export default function ClientOnboardPage() {
           </p>
         </div>
 
-        {/* Compact Trust Strip */}
-        <div
-          className="trust-strip-grid"
-          style={{
-            padding: "11px 20px",
-            backgroundColor: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-            <span style={{ color: "var(--success)", fontSize: "0.8125rem", fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>✓</span>
-            <span style={{ fontSize: "0.8125rem", color: "var(--ink)", fontWeight: 500 }}>
-              You keep custody
-            </span>
+        {/* Client picker when no ?client= param */}
+        {!clientParam && !detail && (
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              backgroundColor: "var(--canvas)",
+              padding: "14px 18px",
+              marginBottom: 14,
+            }}
+          >
+            <h2 style={{ margin: "0 0 10px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
+              Select a client
+            </h2>
+            {loadError && (
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--danger)" }}>{loadError}</p>
+            )}
+            {clients === null && !loadError && (
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>Loading clients…</p>
+            )}
+            {clients !== null && clients.length === 0 && (
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
+                No clients registered. Create one in the agency workspace first.
+              </p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {clients?.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => void pickClient(c.id)}
+                  className="btn-quiet-action"
+                  style={{
+                    textAlign: "left",
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>{c.displayName}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)" }}>{c.status}</span>
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-            <span style={{ color: "var(--success)", fontSize: "0.8125rem", fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>✓</span>
-            <span style={{ fontSize: "0.8125rem", color: "var(--ink)", fontWeight: 500 }}>
-              Agency can only use the amount you approve
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-            <span style={{ color: "var(--success)", fontSize: "0.8125rem", fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>✓</span>
-            <span style={{ fontSize: "0.8125rem", color: "var(--ink)", fontWeight: 500 }}>
-              Unactivated CREDIT stays in your wallet
-            </span>
-          </div>
-        </div>
+        )}
 
-        {/* Step 1: Wallet Connection */}
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            backgroundColor: "var(--canvas)",
-            padding: "14px 18px",
-            marginBottom: 14,
-          }}
-        >
-          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div>
+        {detail && (
+          <>
+            <div
+              className="trust-strip-grid"
+              style={{
+                padding: "11px 20px",
+                backgroundColor: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                <span style={{ color: "var(--success)", fontSize: "0.8125rem", fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>✓</span>
+                <span style={{ fontSize: "0.8125rem", color: "var(--ink)", fontWeight: 500 }}>You keep custody</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                <span style={{ color: "var(--success)", fontSize: "0.8125rem", fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>✓</span>
+                <span style={{ fontSize: "0.8125rem", color: "var(--ink)", fontWeight: 500 }}>Agency can only use the amount you approve</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                <span style={{ color: "var(--success)", fontSize: "0.8125rem", fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>✓</span>
+                <span style={{ fontSize: "0.8125rem", color: "var(--ink)", fontWeight: 500 }}>Unactivated CREDIT stays in your wallet</span>
+              </div>
+            </div>
+
+            {/* Step 1: Wallet Connection */}
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                backgroundColor: "var(--canvas)",
+                padding: "14px 18px",
+                marginBottom: 14,
+              }}
+            >
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "0.6875rem",
+                      letterSpacing: "0.06em",
+                      color: "var(--ink-subtle)",
+                      fontWeight: 600,
+                      marginBottom: 2,
+                    }}
+                  >
+                    STEP 01 · {detail.displayName}
+                  </div>
+                  <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
+                    Connect Wallet
+                  </h2>
+                  <div style={{ fontSize: "0.8125rem", color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
+                    Expected: {truncateMiddle(detail.walletAddress, 8, 6)}
+                  </div>
+                </div>
+
+                {account ? (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "0.8125rem",
+                        backgroundColor: walletMismatch ? "rgba(220, 38, 38, 0.08)" : "rgba(22, 163, 74, 0.08)",
+                        border: `1px solid ${walletMismatch ? "rgba(220, 38, 38, 0.3)" : "rgba(22, 163, 74, 0.25)"}`,
+                        color: walletMismatch ? "var(--danger)" : "var(--success)",
+                        padding: "5px 11px",
+                        borderRadius: 6,
+                        fontWeight: 500,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          backgroundColor: walletMismatch ? "var(--danger)" : "var(--success)",
+                          display: "inline-block",
+                        }}
+                      />
+                      {truncateMiddle(account, 6, 4)}
+                    </div>
+                    {walletMismatch && (
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", color: "var(--danger)" }}>
+                        Wrong wallet · switch to {truncateMiddle(detail.walletAddress, 6, 4)}
+                      </span>
+                    )}
+                    {wrongChain && (
+                      <button
+                        onClick={() => void handleSwitchChain()}
+                        className="btn-quiet-action"
+                        style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: 5, cursor: "pointer", color: "var(--warning)" }}
+                      >
+                        Switch to Robinhood Chain 4663
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => void handleConnect()}
+                    className="btn-primary-action"
+                    style={{
+                      backgroundColor: "var(--fuel)",
+                      color: "#ffffff",
+                      border: "none",
+                      padding: "8px 16px",
+                      borderRadius: 6,
+                      fontSize: "0.875rem",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Connect Wallet
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Step 2: Select Spending Limit */}
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                backgroundColor: "var(--canvas)",
+                padding: "14px 18px",
+                marginBottom: 14,
+                opacity: account && !walletMismatch && !wrongChain ? 1 : 0.55,
+              }}
+            >
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
@@ -171,276 +455,217 @@ export default function ClientOnboardPage() {
                   marginBottom: 2,
                 }}
               >
-                STEP 01
+                STEP 02
               </div>
               <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
-                Connect Wallet
+                Choose Your Spending Limit
               </h2>
-              <div style={{ fontSize: "0.8125rem", color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
-                Network: Robinhood Chain 4663
-              </div>
-            </div>
+              <p style={{ fontSize: "0.875rem", color: "var(--ink-muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
+                Choose the amount of CREDIT this agency can use for your AI automation.
+              </p>
 
-            {walletConnected ? (
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "0.8125rem",
-                  backgroundColor: "rgba(22, 163, 74, 0.08)",
-                  border: "1px solid rgba(22, 163, 74, 0.25)",
-                  color: "var(--success)",
-                  padding: "5px 11px",
-                  borderRadius: 6,
-                  fontWeight: 500,
-                }}
-              >
-                <span
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 8 }}>
+                <input
+                  type="text"
+                  value={allowance}
+                  onChange={(e) => setAllowance(e.target.value)}
+                  placeholder="0.010000"
                   style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: "50%",
-                    backgroundColor: "var(--success)",
-                    display: "inline-block",
+                    padding: "7px 12px",
+                    borderRadius: 6,
+                    border: `1px solid ${allowance && !allowanceValid ? "var(--danger)" : "var(--border)"}`,
+                    backgroundColor: "var(--surface)",
+                    color: "var(--ink)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "1.0625rem",
+                    fontWeight: 600,
+                    width: 160,
                   }}
                 />
-                Connected: {address.slice(0, 6)}...{address.slice(-4)}
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--ink)", fontWeight: 500 }}>
+                  CREDIT{allowance && allowanceValid ? ` ($${allowance} USD)` : ""}
+                </span>
               </div>
-            ) : (
-              <button
-                onClick={handleConnectWallet}
-                className="btn-primary-action"
-                style={{
-                  backgroundColor: "var(--fuel)",
-                  color: "#ffffff",
-                  border: "none",
-                  padding: "8px 16px",
-                  borderRadius: 6,
-                  fontSize: "0.875rem",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                Connect Wallet
-              </button>
-            )}
-          </div>
-        </div>
 
-        {/* Step 2: Select Spending Limit */}
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            backgroundColor: "var(--canvas)",
-            padding: "14px 18px",
-            marginBottom: 14,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.6875rem",
-              letterSpacing: "0.06em",
-              color: "var(--ink-subtle)",
-              fontWeight: 600,
-              marginBottom: 2,
-            }}
-          >
-            STEP 02
-          </div>
-          <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
-            Choose Your Spending Limit
-          </h2>
-          <p style={{ fontSize: "0.875rem", color: "var(--ink-muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
-            Choose the amount of CREDIT this agency can use for your AI automation.
-          </p>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 8 }}>
-            <input
-              type="text"
-              value={allowance}
-              onChange={(e) => setAllowance(e.target.value)}
-              style={{
-                padding: "7px 12px",
-                borderRadius: 6,
-                border: "1px solid var(--border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--ink)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "1.0625rem",
-                fontWeight: 600,
-                width: 160,
-              }}
-            />
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--ink)", fontWeight: 500 }}>
-              CREDIT (${allowance} USD)
-            </span>
-          </div>
-
-          <div
-            style={{
-              fontSize: "0.75rem",
-              color: "var(--ink-muted)",
-              fontFamily: "var(--font-mono)",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 16,
-            }}
-          >
-            <span>Available balance: 0.010000 CREDIT</span>
-            <span>·</span>
-            <span>Estimated runs: ~44</span>
-          </div>
-        </div>
-
-        {/* Step 3: Review and Activate */}
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            backgroundColor: "var(--canvas)",
-            padding: "14px 18px",
-            marginBottom: 20,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.6875rem",
-              letterSpacing: "0.06em",
-              color: "var(--ink-subtle)",
-              fontWeight: 600,
-              marginBottom: 2,
-            }}
-          >
-            STEP 03
-          </div>
-          <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
-            Review and Activate
-          </h2>
-          <p style={{ fontSize: "0.875rem", color: "var(--ink-muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
-            Review your spending limit, then sign with your wallet to activate it.
-          </p>
-
-          {/* Secondary Expandable Signing Payload */}
-          <div style={{ marginBottom: 12 }}>
-            <button
-              type="button"
-              onClick={() => setShowSigningDetails(!showSigningDetails)}
-              style={{
-                background: "none",
-                border: "none",
-                padding: 0,
-                color: "var(--ink-muted)",
-                fontSize: "0.8125rem",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                fontFamily: "var(--font-mono)",
-                fontWeight: 500,
-              }}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                style={{
-                  transform: showSigningDetails ? "rotate(90deg)" : "rotate(0deg)",
-                  transition: "transform 160ms var(--ease-out-cubic)",
-                  flexShrink: 0,
-                }}
-              >
-                <path
-                  d="M4.5 2.5L8 6L4.5 9.5"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span>{showSigningDetails ? "Hide signing details" : "View signing details"}</span>
-            </button>
-
-            {showSigningDetails && (
               <div
                 style={{
-                  marginTop: 8,
-                  padding: "10px 12px",
-                  backgroundColor: "var(--surface)",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontFamily: "var(--font-mono)",
                   fontSize: "0.75rem",
                   color: "var(--ink-muted)",
-                  wordBreak: "break-all",
+                  fontFamily: "var(--font-mono)",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 16,
                 }}
               >
-                Orbio API key - chain 4663 - epoch 1 - allowance {allowance} CREDIT
+                <span>
+                  Transferable balance:{" "}
+                  {transferableUnits !== null ? `${unitsToUsd(transferableUnits)} CREDIT` : "unavailable"}
+                </span>
+                {detail.activatedBalance !== null && (
+                  <>
+                    <span>·</span>
+                    <span>Already activated: ${detail.activatedBalance}</span>
+                  </>
+                )}
               </div>
-            )}
-          </div>
+              {allowance && !allowanceValid && (
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--danger)", margin: "8px 0 0" }}>
+                  {allowanceUnits <= BigInt(0)
+                    ? "Enter an amount greater than zero."
+                    : "Amount exceeds your transferable CREDIT balance."}
+                </p>
+              )}
+              {transferableUnits === BigInt(0) && (
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--warning)", margin: "8px 0 0" }}>
+                  This wallet holds no transferable CREDIT. Acquire CREDIT before activating.
+                </p>
+              )}
+            </div>
 
-          {isSigned ? (
+            {/* Step 3: Activate on chain */}
             <div
               style={{
-                padding: 16,
-                backgroundColor: "rgba(22, 163, 74, 0.08)",
-                border: "1px solid rgba(22, 163, 74, 0.3)",
-                borderRadius: 6,
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                backgroundColor: "var(--canvas)",
+                padding: "14px 18px",
+                marginBottom: 20,
+                opacity: account && !walletMismatch && !wrongChain ? 1 : 0.55,
               }}
             >
-              <div style={{ color: "var(--success)", fontWeight: 600, fontSize: "0.875rem", marginBottom: 6 }}>
-                ALLOWANCE ACTIVATED ON-CHAIN
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.6875rem",
+                  letterSpacing: "0.06em",
+                  color: "var(--ink-subtle)",
+                  fontWeight: 600,
+                  marginBottom: 2,
+                }}
+              >
+                STEP 03
               </div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink)", marginBottom: 12 }}>
-                Transaction Hash: <code>{txHash}</code> (Activation ID: #200)
-              </div>
-              <div>
-                <Link
-                  href="/client/dashboard"
-                  className="btn-primary-action"
+              <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
+                Activate on Robinhood Chain
+              </h2>
+              <p style={{ fontSize: "0.875rem", color: "var(--ink-muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                Your wallet sends one activate() transaction. The amount leaves your transferable balance and becomes spendable inference credit.
+              </p>
+
+              {phase.kind === "done" ? (
+                <div
                   style={{
-                    backgroundColor: "var(--fuel)",
-                    color: "#ffffff",
-                    padding: "8px 16px",
+                    padding: 16,
+                    backgroundColor: "rgba(22, 163, 74, 0.08)",
+                    border: "1px solid rgba(22, 163, 74, 0.3)",
                     borderRadius: 6,
-                    fontSize: "0.875rem",
-                    fontWeight: 500,
-                    display: "inline-block",
                   }}
                 >
-                  Go to Client Dashboard &rarr;
-                </Link>
-              </div>
+                  <div style={{ color: "var(--success)", fontWeight: 600, fontSize: "0.875rem", marginBottom: 6 }}>
+                    ALLOWANCE ACTIVATED ON CHAIN
+                  </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink)", marginBottom: 4, wordBreak: "break-all" }}>
+                    {phase.txHash}
+                  </div>
+                  {phase.activationId !== null && (
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: 12 }}>
+                      Activation ID #{phase.activationId}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                    <Link
+                      href={`/connect/${detail.id}`}
+                      className="btn-primary-action"
+                      style={{
+                        backgroundColor: "var(--fuel)",
+                        color: "#ffffff",
+                        padding: "8px 16px",
+                        borderRadius: 6,
+                        fontSize: "0.875rem",
+                        fontWeight: 500,
+                        display: "inline-block",
+                      }}
+                    >
+                      Authorize activated balance &rarr;
+                    </Link>
+                    <Link
+                      href={`/client/dashboard?client=${detail.slug}`}
+                      className="btn-quiet-action"
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 6,
+                        fontSize: "0.875rem",
+                        display: "inline-block",
+                      }}
+                    >
+                      Client dashboard
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {phase.kind === "indexing" && (
+                    <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)", margin: "0 0 10px" }}>
+                      Confirmed on chain · waiting for the Orbio index to reflect the new balance…
+                    </p>
+                  )}
+                  {phase.kind === "recording" && (
+                    <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)", margin: "0 0 10px" }}>
+                      Verifying transaction on Robinhood Chain…
+                    </p>
+                  )}
+                  <button
+                    onClick={() => void handleActivate()}
+                    disabled={!allowanceValid || busy || walletMismatch || wrongChain || !account}
+                    className="btn-primary-action"
+                    style={{
+                      backgroundColor: "var(--fuel)",
+                      color: "#ffffff",
+                      border: "none",
+                      padding: "10px 20px",
+                      borderRadius: 6,
+                      fontSize: "0.875rem",
+                      fontWeight: 500,
+                      cursor: !allowanceValid || busy || !account ? "not-allowed" : "pointer",
+                      opacity: !allowanceValid || busy || !account ? 0.6 : 1,
+                    }}
+                  >
+                    {busy ? "Activating…" : `Activate ${allowance || "0"} CREDIT`}
+                  </button>
+                </>
+              )}
+
+              {phase.kind === "error" && (
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--danger)", margin: "12px 0 0" }}>
+                  {phase.message}
+                </p>
+              )}
+
+              {detail.latestActivation && phase.kind !== "done" && (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-subtle)", marginTop: 12 }}>
+                  Latest activation on record: {truncateMiddle(detail.latestActivation.transactionHash, 10, 8)}
+                  {detail.latestActivation.activationId !== null && ` · ID #${detail.latestActivation.activationId}`}
+                </div>
+              )}
             </div>
-          ) : (
-            <button
-              onClick={handleSignAllowance}
-              disabled={isSigning}
-              className="btn-primary-action"
-              style={{
-                backgroundColor: "var(--fuel)",
-                color: "#ffffff",
-                border: "none",
-                padding: "10px 20px",
-                borderRadius: 6,
-                fontSize: "0.875rem",
-                fontWeight: 500,
-                cursor: isSigning ? "not-allowed" : "pointer",
-                opacity: isSigning ? 0.7 : 1,
-              }}
-            >
-              {isSigning ? "Signing in Wallet..." : `Activate ${allowance} CREDIT`}
-            </button>
-          )}
-        </div>
+          </>
+        )}
+
+        {clientParam && !detail && !loadError && (
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>Loading client…</p>
+        )}
+        {clientParam && loadError && (
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--danger)" }}>{loadError}</p>
+        )}
       </main>
     </div>
+  );
+}
+
+export default function ClientOnboardPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", backgroundColor: "var(--canvas)" }} />}>
+      <OnboardInner />
+    </Suspense>
   );
 }

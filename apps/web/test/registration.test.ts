@@ -20,6 +20,8 @@ import { migrateDb } from "@flowfuel/db/migrate";
 import {
   issueNonce,
   registerCredential,
+  revokeCredential,
+  updateClientStatus,
   verifyWallet,
   type RegistrationDeps,
 } from "../src/lib/registration";
@@ -306,5 +308,108 @@ describe("credential registration", () => {
     );
     expect(plaintext.toString()).toBe(rotate.orbioCredential);
     expect(orbioCredentialEpoch(plaintext.toString())).toBe(1);
+  });
+});
+
+describe("signed client actions", () => {
+  it("pauses and resumes a client with wallet signatures", async () => {
+    const { account, client } = await makeClient();
+    const pauseNonce = await issueNonce(deps(fundedOrbio), client.id, "pause_client");
+    const pauseSig = await sign(
+      account,
+      buildNonceMessage(client.id, "pause_client", pauseNonce.nonce),
+    );
+    const paused = await updateClientStatus(deps(fundedOrbio), client.id, {
+      status: "paused",
+      nonce: pauseNonce.nonce,
+      signature: pauseSig,
+    });
+    expect(paused.status).toBe("paused");
+    expect((await clientStore.getById(client.id))?.status).toBe("paused");
+
+    const resumeNonce = await issueNonce(deps(fundedOrbio), client.id, "pause_client");
+    const resumeSig = await sign(
+      account,
+      buildNonceMessage(client.id, "pause_client", resumeNonce.nonce),
+    );
+    const resumed = await updateClientStatus(deps(fundedOrbio), client.id, {
+      status: "ready",
+      nonce: resumeNonce.nonce,
+      signature: resumeSig,
+    });
+    expect(resumed.status).toBe("ready");
+    expect((await clientStore.getById(client.id))?.status).toBe("ready");
+  });
+
+  it("rejects replay of a consumed pause nonce", async () => {
+    const { account, client } = await makeClient();
+    const { nonce } = await issueNonce(deps(fundedOrbio), client.id, "pause_client");
+    const signature = await sign(
+      account,
+      buildNonceMessage(client.id, "pause_client", nonce),
+    );
+    await updateClientStatus(deps(fundedOrbio), client.id, {
+      status: "paused",
+      nonce,
+      signature,
+    });
+    await expect(
+      updateClientStatus(deps(fundedOrbio), client.id, {
+        status: "ready",
+        nonce,
+        signature,
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect((await clientStore.getById(client.id))?.status).toBe("paused");
+  });
+
+  it("rejects a pause signature from the wrong wallet", async () => {
+    const { client } = await makeClient();
+    const stranger = privateKeyToAccount(generatePrivateKey());
+    const { nonce } = await issueNonce(deps(fundedOrbio), client.id, "pause_client");
+    const signature = await sign(
+      stranger,
+      buildNonceMessage(client.id, "pause_client", nonce),
+    );
+    await expect(
+      updateClientStatus(deps(fundedOrbio), client.id, {
+        status: "paused",
+        nonce,
+        signature,
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("revokes the stored credential and drops the client to revoked", async () => {
+    const { account, client } = await makeClient();
+    const input = await registerInput(account, client.id, "register_credential", 0);
+    await registerCredential(deps(fundedOrbio), client.id, input);
+    expect(await credentialStore.getForClient(client.id)).not.toBeNull();
+
+    const { nonce } = await issueNonce(deps(fundedOrbio), client.id, "revoke_credential");
+    const signature = await sign(
+      account,
+      buildNonceMessage(client.id, "revoke_credential", nonce),
+    );
+    const result = await revokeCredential(deps(fundedOrbio), client.id, {
+      nonce,
+      signature,
+    });
+    expect(result).toEqual({ revoked: true });
+    expect(await credentialStore.getForClient(client.id)).toBeNull();
+    expect((await clientStore.getById(client.id))?.status).toBe("revoked");
+  });
+
+  it("rejects revoke with a pause-purpose nonce", async () => {
+    const { account, client } = await makeClient();
+    const { nonce } = await issueNonce(deps(fundedOrbio), client.id, "pause_client");
+    const signature = await sign(
+      account,
+      buildNonceMessage(client.id, "pause_client", nonce),
+    );
+    await expect(
+      revokeCredential(deps(fundedOrbio), client.id, { nonce, signature }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect((await clientStore.getById(client.id))?.status).toBe("pending");
   });
 });

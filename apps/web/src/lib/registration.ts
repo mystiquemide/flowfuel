@@ -8,6 +8,8 @@ import {
   verifyWalletRequestSchema,
   type NoncePurpose,
   type RegisterCredentialRequest,
+  type RevokeCredentialRequest,
+  type UpdateClientStatusRequest,
   type VerifyWalletRequest,
 } from "@flowfuel/core";
 import type { OrbioClient } from "@flowfuel/broker";
@@ -26,7 +28,7 @@ export interface RegistrationDeps {
   >;
   credentials: Pick<
     ReturnType<typeof createCredentialStore>,
-    "getForClient" | "save" | "markVerified"
+    "getForClient" | "save" | "markVerified" | "remove"
   >;
   audit: Pick<ReturnType<typeof createAuditStore>, "append">;
   orbio: Pick<OrbioClient, "getKeyInfo">;
@@ -218,4 +220,99 @@ export async function registerCredential(
     }
     throw err;
   }
+}
+
+async function verifySignedAction(
+  deps: RegistrationDeps,
+  clientId: string,
+  purpose: NoncePurpose,
+  nonce: string,
+  signature: string,
+): Promise<void> {
+  const client = await deps.clients.getById(clientId);
+  if (!client) {
+    throw new FlowFuelError("NOT_FOUND", "Client not found");
+  }
+  const message = buildNonceMessage(clientId, purpose, nonce);
+  const valid = await verifyWalletSignature({
+    walletAddress: client.walletAddress,
+    message,
+    signature: signature as `0x${string}`,
+  });
+  if (!valid) {
+    throw new FlowFuelError("UNAUTHORIZED", "Signature verification failed");
+  }
+  const consumed = await deps.clients.consumeNonce(nonce, clientId, purpose);
+  if (!consumed) {
+    throw new FlowFuelError(
+      "UNAUTHORIZED",
+      "Nonce is expired, consumed, or issued for another purpose",
+    );
+  }
+}
+
+/**
+ * Pauses or resumes a client. Both directions require a wallet signature on a
+ * pause_client nonce, so only the wallet owner can flip the switch. Paused
+ * clients are rejected by the broker before any gateway call.
+ */
+export async function updateClientStatus(
+  deps: RegistrationDeps,
+  clientId: string,
+  input: UpdateClientStatusRequest,
+): Promise<{ status: "paused" | "ready" }> {
+  const client = await deps.clients.getById(clientId);
+  if (!client) {
+    throw new FlowFuelError("NOT_FOUND", "Client not found");
+  }
+  await verifySignedAction(
+    deps,
+    clientId,
+    "pause_client",
+    input.nonce,
+    input.signature,
+  );
+  const updated = await deps.clients.setStatus(clientId, input.status);
+  if (!updated) {
+    throw new FlowFuelError("NOT_FOUND", "Client not found");
+  }
+  await deps.audit.append({
+    clientId,
+    actorType: "client",
+    eventType: input.status === "paused" ? "client_paused" : "client_resumed",
+    publicData: { status: input.status },
+  });
+  return { status: input.status };
+}
+
+/**
+ * Revokes the stored credential. The wallet owner signs a revoke_credential
+ * nonce; the credential row is deleted and the client drops to revoked, which
+ * the broker treats as unfunded with no fallback path.
+ */
+export async function revokeCredential(
+  deps: RegistrationDeps,
+  clientId: string,
+  input: RevokeCredentialRequest,
+): Promise<{ revoked: true }> {
+  const client = await deps.clients.getById(clientId);
+  if (!client) {
+    throw new FlowFuelError("NOT_FOUND", "Client not found");
+  }
+  await verifySignedAction(
+    deps,
+    clientId,
+    "revoke_credential",
+    input.nonce,
+    input.signature,
+  );
+  await deps.credentials.remove(clientId);
+  await deps.clients.setStatus(clientId, "revoked");
+  await deps.audit.append({
+    clientId,
+    actorType: "client",
+    eventType: "credential_revoked",
+    publicData: {},
+  });
+  return { revoked: true };
 }
