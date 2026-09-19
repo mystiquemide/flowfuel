@@ -167,25 +167,30 @@ FlowFuel separates **operational ownership** from **economic ownership**.
 
 ![Recorded live isolation proof: funded Client A succeeds, unfunded Client B is blocked at the gateway](docs/proof.png)
 
-One shared n8n Lead Intelligence Agent. The same task shape. Three client identities.
+One shared n8n Lead Intelligence Agent. Four client identities proving isolation, protocol funding, and autonomous refueling.
 
 | Client | Funding state | Result | Who paid? |
 |---|---|---|---|
 | **A** | Funded | Two Orbio generations, agent succeeds | Client A |
 | **B** | Unfunded | HTTP 401, zero generations, zero charge | Nobody |
 | **C** | Funded through `buyAndActivate()` | Same agent succeeds | Client C |
+| **D** | Low balance + client-owned USDG reserve | FlowFuel autonomously refuels through the corrected vault, activates CREDIT for D, then the agent succeeds after indexing | Client D |
+
+**Client D is the autonomous-agent proof.** FlowFuel detected a low Orbio balance, evaluated the client's refuel policy, triggered the client-owned vault, spent `1.000000` USDG, activated `1.225490` CREDIT for Client D, and recorded activation ID `274`. After indexing, the Lead Intelligence Agent completed a two-generation continuation run.
 
 The important part is what **does not** happen:
 
-**Client B never falls back to Client A or Client C.**
+**Client B never falls back to Client A, Client C, an agency balance, or any other funding source. Client D's refuel can only benefit Client D.**
 
-That behavior is enforced by the runtime, not requested from the model.
+Those boundaries are enforced by the runtime and the vault contract, not requested from the model.
 
 ### Canonical recorded executions
 
 - **Client A:** two real Orbio generations, exactly `$0.000065` charged, balance `$0.008412 → $0.008348`. [Receipt](https://flowfuel.midelabs.xyz/api/runs/505513c6-4303-4a3a-a14e-9a39111fc13b/receipt)
 - **Client B:** `HTTP 401`, zero generations, zero charge, no fallback. [Receipt](https://flowfuel.midelabs.xyz/api/runs/dbf5263e-0ef4-42d6-9d0c-e004b44ec54c/receipt)
 - **Client C:** funded through `buyAndActivate()`, then the same agent completed with two generations and a `$0.000074` aggregate charge. [Receipt](https://flowfuel.midelabs.xyz/api/runs/e50a5419-328f-49b6-9aaa-9c70f0497d9f/receipt)
+- **Client D autonomous refuel:** the corrected vault spent `1.000000` USDG, activated `1.225490` CREDIT for Client D, recorded activation ID `274`, and indexed the new Orbio balance. [Refuel receipt](https://flowfuel.midelabs.xyz/api/runs/0c121e19-5700-4524-ae2c-be5fc76861bc/receipt) · [Refuel transaction](https://robin.etherscan.io/tx/0x16813008741f386c7b593e917e98d55018b37ffeec71141a6e785ec6f4c1ffe2)
+- **Client D continuation:** after the refuel indexed, the Lead Intelligence Agent completed a separate two-generation run costing `$0.000041012000`. [Continuation receipt](https://flowfuel.midelabs.xyz/api/runs/145bfcd7-6efb-455f-9184-fed7b9026e2d/receipt)
 - **Over-quota run:** `HTTP 402`, nothing charged. [Receipt](https://flowfuel.midelabs.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt)
 - **Protocol funding:** Client C self-funded with USDG through the Orbio Exchange and `buyAndActivate()`, with the client wallet as beneficiary. [Transaction](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9)
 
@@ -298,6 +303,9 @@ Wallet private keys never enter FlowFuel.
 | Funded agent | [Client A receipt](https://flowfuel.midelabs.xyz/api/runs/505513c6-4303-4a3a-a14e-9a39111fc13b/receipt) |
 | Unfunded isolation | [Client B receipt](https://flowfuel.midelabs.xyz/api/runs/dbf5263e-0ef4-42d6-9d0c-e004b44ec54c/receipt) |
 | Protocol-funded agent | [Client C receipt](https://flowfuel.midelabs.xyz/api/runs/e50a5419-328f-49b6-9aaa-9c70f0497d9f/receipt) |
+| Autonomous refuel | [Client D refuel receipt](https://flowfuel.midelabs.xyz/api/runs/0c121e19-5700-4524-ae2c-be5fc76861bc/receipt) · [transaction](https://robin.etherscan.io/tx/0x16813008741f386c7b593e917e98d55018b37ffeec71141a6e785ec6f4c1ffe2) |
+| Post-refuel agent continuation | [Client D continuation receipt](https://flowfuel.midelabs.xyz/api/runs/145bfcd7-6efb-455f-9184-fed7b9026e2d/receipt) |
+| Corrected refuel vault | [FlowFuelRefuelVault](https://robin.etherscan.io/address/0x22711eEe32f96c8462471A12d8f32cEA24C09d15) |
 | Over-quota rejection | [402 receipt](https://flowfuel.midelabs.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt) |
 | Client A `activate()` | [Explorer](https://robin.etherscan.io/tx/0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed) |
 | Client C direct activation | [Explorer](https://robin.etherscan.io/tx/0x3654d2b614f4f62977ecf7059f99be021d6c1c27076325d077b4101fc1889889) |
