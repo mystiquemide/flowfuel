@@ -453,14 +453,18 @@ evaluated from live Orbio gateway state. Spending limits are enforced onchain.
 Exchange activation can index asynchronously, so FlowFuel distinguishes a
 confirmed transaction from an indexed Orbio balance.
 
-The first tiny Client D transaction exposed a protocol-specific accounting
-detail before the public proof was finalized. The Exchange transferred the
-full `0.999900` USDG input while its return field reported `0.980294` matched
-USDG. FlowFuel now accounts the actual USDG token balance delta and rejects
-invalid output. That original transaction remains available as a diagnostic,
-not as a clean custody proof.
+The corrected Client D proof records a real refuel through the corrected vault:
+`1.000000` USDG was transferred from the client reserve, `1.225490` CREDIT
+was activated, activation ID `274`, and the beneficiary was Client D. [Refuel
+receipt](https://flowfuel.midelabs.xyz/api/runs/0c121e19-5700-4524-ae2c-be5fc76861bc/receipt) · [Continuation receipt](https://flowfuel.midelabs.xyz/api/runs/145bfcd7-6efb-455f-9184-fed7b9026e2d/receipt) · [Refuel transaction](https://robin.etherscan.io/tx/0x16813008741f386c7b593e917e98d55018b37ffeec71141a6e785ec6f4c1ffe2)
 
-The corrected vault is [FlowFuelRefuelVault](https://robin.etherscan.io/address/0x22711eEe32f96c8462471A12d8f32cEA24C09d15), deployed in transaction [0xf0681ced](https://robin.etherscan.io/tx/0xf0681ceda82f9f2015a628db58821e0af7059030040cd81c03e3499589d24272). A fresh tiny Client D reserve is required before the autonomous-refuel proof is re-enabled.
+The final Client D policy is `$0.50` threshold, `1.000000` USDG refill,
+`3.000000` USDG weekly cap, and 200 bps slippage. The live trigger used a
+temporary `$2.00` threshold because the indexed balance was `$1.270882`; the
+threshold was restored to `$0.50` before publication. The later continuation
+run succeeded with two agent generations after indexing.
+
+The corrected vault is [FlowFuelRefuelVault](https://robin.etherscan.io/address/0x22711eEe32f96c8462471A12d8f32cEA24C09d15), deployed in transaction [0xf0681ced](https://robin.etherscan.io/tx/0xf0681ceda82f9f2015a628db58821e0af7059030040cd81c03e3499589d24272). The first retired deployment exposed a protocol-specific distinction: the Exchange transferred the full input while reporting a lower matched amount. FlowFuel now accounts the actual USDG token balance delta.
 
 The agency operates the agent. The client sets the budget. FlowFuel keeps it
 running.
@@ -484,7 +488,6 @@ running.
 - The first tiny Client D transaction was retired from public proof after it
   revealed that the live Exchange pulls the full input while reporting a lower
   matched amount. The corrected vault uses the actual token balance delta.
-- A fresh Client D reserve and a second clean live proof are still required.
 
 ---
 
