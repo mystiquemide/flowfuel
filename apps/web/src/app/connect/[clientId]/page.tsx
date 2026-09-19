@@ -59,7 +59,6 @@ export default async function ConnectPage({ params }: ConnectPageProps) {
       <ConnectFlow
         clientId={client.id}
         walletAddress={client.walletAddress}
-        status={client.status}
         hasCredential={credential !== null}
         epoch={credential?.epoch ?? null}
       />

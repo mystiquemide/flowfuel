@@ -134,8 +134,22 @@ function statusForError(code: string): Exclude<RunStatus, "running"> {
   return ERROR_STATUS[code] ?? "provider_failed";
 }
 
+const COST_SCALE = 12;
+
 function decimal(value: number | null | undefined): string | null {
-  return value == null ? null : value.toFixed(6);
+  return value == null ? null : value.toFixed(COST_SCALE);
+}
+
+function addCosts(left: string, right: string): string {
+  const [leftWhole = "0", leftFraction = ""] = left.split(".");
+  const [rightWhole = "0", rightFraction = ""] = right.split(".");
+  const scale = 10n ** BigInt(COST_SCALE);
+  const leftUnits = BigInt(leftWhole) * scale + BigInt(leftFraction.padEnd(COST_SCALE, "0"));
+  const rightUnits = BigInt(rightWhole) * scale + BigInt(rightFraction.padEnd(COST_SCALE, "0"));
+  const total = leftUnits + rightUnits;
+  const whole = total / scale;
+  const fraction = (total % scale).toString().padStart(COST_SCALE, "0");
+  return `${whole}.${fraction}`;
 }
 
 function receiptFromRun(run: RunRow, client: ClientRow): RunReceiptSummary {
@@ -317,7 +331,7 @@ async function executeLocked(
     promptTokens: number;
     completionTokens: number;
   }> = [];
-  let totalCostSeen = 0;
+  let totalCostSeen = "0.000000000000";
 
   try {
     const outcome = await withDecryptedCredential(
@@ -356,7 +370,7 @@ async function executeLocked(
           promptTokens: plan.promptTokens,
           completionTokens: plan.completionTokens,
         });
-        totalCostSeen += plan.costUsd;
+        totalCostSeen = addCosts(totalCostSeen, decimal(plan.costUsd)!);
         const call = plan.toolCalls.find((item) => item.name === "inspect_public_website");
         if (!call) {
           throw new FlowFuelError("PROVIDER_FAILED", "Agent did not request the required website inspection");
@@ -396,7 +410,7 @@ async function executeLocked(
           promptTokens: completion.promptTokens,
           completionTokens: completion.completionTokens,
         });
-        totalCostSeen += completion.costUsd;
+        totalCostSeen = addCosts(totalCostSeen, decimal(completion.costUsd)!);
         let parsedResult: unknown;
         try {
           parsedResult = JSON.parse(completion.content ?? "");
@@ -436,7 +450,7 @@ async function executeLocked(
       generationId: outcome.completion.generationId,
       balanceBefore: outcome.before.balance.available,
       balanceAfter: outcome.balanceAfter,
-      costUsd: decimal(totalCostSeen),
+      costUsd: totalCostSeen,
       promptTokens: generationEvidenceSeen.reduce((sum, item) => sum + item.promptTokens, 0),
       completionTokens: generationEvidenceSeen.reduce((sum, item) => sum + item.completionTokens, 0),
       upstreamStatus: outcome.completion.upstreamStatus,
@@ -492,7 +506,7 @@ async function executeLocked(
       error instanceof FlowFuelError
         ? error
         : new FlowFuelError("PROVIDER_FAILED", "Unexpected run failure");
-    if (totalCostSeen > 0 && balanceAfterSeen === null) {
+    if (totalCostSeen !== "0.000000000000" && balanceAfterSeen === null) {
       try {
         const credentialAgain = await deps.credentials.getForClient(request.clientId);
         if (credentialAgain) {
@@ -510,7 +524,7 @@ async function executeLocked(
       upstreamStatus: mapped.upstreamStatus,
       balanceBefore: balanceBeforeSeen,
       balanceAfter: balanceAfterSeen,
-      costUsd: totalCostSeen > 0 ? decimal(totalCostSeen) : null,
+      costUsd: totalCostSeen !== "0.000000000000" ? totalCostSeen : null,
       generations: generationEvidenceSeen,
     });
     return {

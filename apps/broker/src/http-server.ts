@@ -45,6 +45,8 @@ function sendError(res: ServerResponse, error: FlowFuelError): void {
   const status =
     error.code === "UNAUTHORIZED"
       ? 401
+      : error.code === "FORBIDDEN"
+        ? 403
       : error.code === "NOT_FOUND"
         ? 404
         : error.code === "CONFLICT"

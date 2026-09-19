@@ -193,7 +193,7 @@ The web and broker may share one deployment during the hackathon if that reduces
 |---|---|---|
 | nonce | UUID | Primary key, random |
 | client_id | UUID | Foreign key |
-| purpose | enum | connect, register_credential, rotate_credential |
+| purpose | enum | connect, register_credential, rotate_credential, pause_client, revoke_credential |
 | expires_at | timestamp | Short lifetime |
 | consumed_at | timestamp | Null until verified |
 
@@ -232,12 +232,15 @@ The web and broker may share one deployment during the hackathon if that reduces
 | workflow_run_id | text | Optional n8n execution ID |
 | task_type | text | Allowlisted |
 | model | text | Allowlisted |
-| status | enum | running, succeeded, client_unfunded, quota_exceeded, provider_failed, validation_failed |
+| status | enum | running, succeeded, client_unfunded, quota_exceeded, provider_failed, validation_failed, reconciliation_failed |
 | generation_id | text | Present only for successful provider execution |
+| generations | JSON | One entry per Orbio generation, including phase, model, ID, cost, and token counts |
+| result_ciphertext | text | AES-256-GCM encrypted structured agent result for idempotent replay |
+| activation_tx_hash | bytes32 | Activation context captured when the run starts |
 | balance_before | decimal | Live Orbio value |
 | balance_after | decimal | Live Orbio value when available |
-| cost_usd | decimal | Live provider value when available |
-| prompt_tokens | integer | No prompt text stored |
+| cost_usd | decimal | Aggregate provider value, persisted with provider precision when available |
+| prompt_tokens | integer | Token count only, no prompt text stored |
 | completion_tokens | integer | Non-negative |
 | error_code | text | Normalized code |
 | upstream_status | integer | Original HTTP status |
@@ -325,8 +328,12 @@ Successful response:
   "receipt": {
     "clientWallet": "0x...",
     "generationId": "gen-...",
+    "generations": [
+      { "phase": "plan", "generationId": "gen-...", "costUsd": "0.000020000000" },
+      { "phase": "analysis", "generationId": "gen-...", "costUsd": "0.000045000000" }
+    ],
     "model": "mistralai/mistral-nemo",
-    "costUsd": "0.000026",
+    "costUsd": "0.000065000000",
     "balanceBefore": "0.010000",
     "balanceAfter": "0.009974"
   }
@@ -351,6 +358,12 @@ Normalized funding response:
 
 Private callers receive operational details. Public proof pages receive a secret-free projection.
 
+### Client access boundary
+
+`GET /api/clients/:clientId/bootstrap` is the public link bootstrap. It returns only the client ID, display name, expected wallet, and chain ID needed to start the wallet flow. It never returns balances, spend, runs, activation history, or credential metadata.
+
+`GET /api/clients/:clientId` requires either the agency session or a short-lived, signed client session issued after the expected wallet signs a connect nonce. A client session contains the client ID in its signed payload and cannot authorize another client. Activation, credential, and status mutations retain wallet-signed nonce or verified onchain protections and also require the matching client session in browser flows.
+
 ## 7. Execution sequence
 
 ```mermaid
@@ -367,13 +380,21 @@ sequenceDiagram
     F->>F: decrypt for this request
     F->>O: GET /key
     O-->>F: balance before
-    F->>O: POST /chat/completions
+    F->>O: planning generation with required tool call
+    O-->>F: tool selection, generation ID, usage
+    F->>F: validate target and pin website request to global IP
+    F->>F: observe public website with streaming byte cap
+    F->>O: analysis generation with structured JSON schema
     O-->>F: result, generation ID, usage
+    F->>F: validate structured output
     F->>O: GET /key
-    O-->>F: balance after
-    F->>F: reconcile and persist receipt
+    O-->>F: settled balance after
+    F->>F: aggregate generation costs and reconcile balance delta
+    F->>F: encrypt and persist agent result and receipt
     F-->>N: result and receipt
 ```
+
+One FlowFuel run contains multiple Orbio generations. The reference Lead Intelligence Agent uses one planning generation, one validated website observation, and one analysis generation. A run is successful only after structured schema validation, settled balance polling, aggregate reconciliation, and encrypted result persistence all succeed.
 
 ## 8. Error model
 
@@ -414,7 +435,8 @@ sequenceDiagram
 - Maximum input bytes and output tokens.
 - Model allowlist.
 - Secret redaction in structured logs.
-- No prompt or response retention by default.
+- Prompt text, raw website observation, plaintext agent output, and credentials are not public and are not included in audit events or receipts.
+- Successful structured agent output is encrypted at rest in `runs.result_ciphertext` so an idempotent retry can replay the result without charging a second time. The plaintext result is not rendered in public proof data.
 - Public receipt projection built from an explicit allowlist.
 - Encryption-key rotation procedure documented before production use.
 
@@ -516,12 +538,10 @@ Reason: funded and unfunded receipts must prove they attempted the same work wit
 
 ## 14. Deployment boundary
 
-No deployment is authorized by this document.
+The production proof is live on one self-hosted VPS. The web app and broker run as separate systemd services, PostgreSQL and n8n bind to loopback, and Caddy provides the HTTPS public boundary. This is a single-host deployment with no multi-zone failover or independent secret manager.
 
-When approved:
-
-- Web and broker may deploy as one service for the hackathon.
-- PostgreSQL stores application records.
-- n8n may run locally or on an isolated host and communicates over HTTPS.
-- Secrets live only in deployment environment variables.
+- Web and broker may share the VPS while keeping separate process and module boundaries.
+- PostgreSQL stores application records and encrypted result/credential ciphertext.
+- n8n communicates with the broker over the local Docker-to-host path in the current deployment.
+- Secrets live only in deployment environment variables. `FLOWFUEL_COMMIT_SHA` is injected from the full git HEAD during each deployment.
 - Production must use a new source wallet and never the private key exposed during feasibility testing.

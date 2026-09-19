@@ -22,12 +22,29 @@ import { creditBalanceOf, usdgBalanceOf } from "../../../../lib/chain";
 import { liveActivatedBalance } from "../../../../lib/live";
 import { updateClientStatus } from "../../../../lib/registration";
 import { registrationDeps } from "../../../../lib/services";
+import {
+  assertClientSession,
+  clientAccessFromRequest,
+} from "../../../../lib/client-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function requireDetailAccess(request: Request, clientId: string): void {
+  const access = clientAccessFromRequest(request, clientId);
+  if (access === "forbidden") {
+    throw new FlowFuelError(
+      "FORBIDDEN",
+      "This client session cannot access another client",
+    );
+  }
+  if (!access) {
+    throw new FlowFuelError("UNAUTHORIZED", "Client authentication required");
+  }
+}
+
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ clientId: string }> },
 ): Promise<Response> {
   try {
@@ -41,6 +58,7 @@ export async function GET(
     if (!client) {
       throw new FlowFuelError("NOT_FOUND", "Client not found");
     }
+    requireDetailAccess(request, client.id);
     const credentials = createCredentialStore(db);
     const runs = createRunStore(db);
     const activations = createActivationStore(db);
@@ -114,6 +132,7 @@ export async function PATCH(
   try {
     const { clientId } = await context.params;
     uuidSchema.parse(clientId);
+    assertClientSession(request, clientId);
     const input = updateClientStatusRequestSchema.parse(
       await parseJson(request),
     );

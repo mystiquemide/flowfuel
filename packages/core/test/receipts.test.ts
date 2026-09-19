@@ -49,7 +49,7 @@ describe("toPublicReceipt", () => {
     expect(receipt.activationExplorerUrl).toBe(
       `https://robin.etherscan.io/tx/${TX}`,
     );
-    expect(receipt.source).toBe("live");
+    expect(receipt.source).toBe("recorded_live_execution");
   });
 
   it("emits only allowlisted keys", () => {
@@ -177,7 +177,7 @@ describe("publicReceiptSchema", () => {
     activationContext: "recorded_at_run_start",
     startedAt: NOW,
     completedAt: NOW,
-    source: "live",
+    source: "recorded_live_execution",
   };
 
   it("accepts a fully populated receipt", () => {

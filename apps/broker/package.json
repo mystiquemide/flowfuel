@@ -9,12 +9,13 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests --fileParallelism=false",
-    "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts"
+    "dev": "tsx watch --env-file-if-exists=../../.env.local src/server.ts",
+    "start": "tsx --env-file-if-exists=../../.env.local src/server.ts"
   },
   "dependencies": {
     "@flowfuel/core": "workspace:*",
     "@flowfuel/db": "workspace:*",
+    "ipaddr.js": "2.5.0",
     "zod": "4.6.2"
   },
   "devDependencies": {

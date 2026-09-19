@@ -47,6 +47,8 @@ function makeOrbio(overrides: Partial<{
   completionError: FlowFuelError;
   balances: string[];
   delay: number;
+  analysisContent: string | null;
+  toolCalls: Array<{ id: string; name: string; arguments: string }>;
 }> = {}): OrbioSpy {
   let keyInfoCalls = 0;
   const balances = overrides.balances ?? ["0.009726", "0.009700"];
@@ -90,7 +92,7 @@ function makeOrbio(overrides: Partial<{
           provider: "google",
           content: input.tools
             ? null
-            : JSON.stringify({
+            : overrides.analysisContent ?? JSON.stringify({
                 summary: "Qualified lead",
                 qualification: "high",
                 findings: ["Clear automation need"],
@@ -104,7 +106,7 @@ function makeOrbio(overrides: Partial<{
           costUsd: 0.000013,
           balanceAfter: null,
           toolCalls: input.tools
-            ? [{ id: "tool-1", name: "inspect_public_website", arguments: '{"url":"https://example.com"}' }]
+            ? overrides.toolCalls ?? [{ id: "tool-1", name: "inspect_public_website", arguments: '{"url":"https://example.com"}' }]
             : [],
           webSearchRequests: 0,
         };
@@ -198,11 +200,60 @@ describe("executeRun", () => {
     expect(res.receipt.generationId).toBe("gen-test-2");
     expect(res.receipt.balanceBefore).toBe("0.009726");
     expect(res.receipt.balanceAfter).toBe("0.009700");
-    expect(res.receipt.costUsd).toBe("0.000026");
+    expect(res.receipt.costUsd).toBe("0.000026000000");
 
     const row = await runStore.getById(res.runId);
     expect(row?.status).toBe("succeeded");
     expect(row?.taskHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it.each([
+    ["invalid JSON", "{not-json"],
+    [
+      "missing required field",
+      JSON.stringify({ qualification: "high", findings: [], risks: [], recommendedAction: "Review", confidence: 0.8, sources: [] }),
+    ],
+    [
+      "invalid qualification",
+      JSON.stringify({ summary: "Lead", qualification: "certain", findings: [], risks: [], recommendedAction: "Review", confidence: 0.8, sources: [] }),
+    ],
+    [
+      "confidence below zero",
+      JSON.stringify({ summary: "Lead", qualification: "high", findings: [], risks: [], recommendedAction: "Review", confidence: -0.1, sources: [] }),
+    ],
+    [
+      "confidence above one",
+      JSON.stringify({ summary: "Lead", qualification: "high", findings: [], risks: [], recommendedAction: "Review", confidence: 1.1, sources: [] }),
+    ],
+    [
+      "invalid sources structure",
+      JSON.stringify({ summary: "Lead", qualification: "high", findings: [], risks: [], recommendedAction: "Review", confidence: 0.8, sources: [{ title: "bad", url: "not-a-url" }] }),
+    ],
+  ])("fails closed for %s", async (_label, analysisContent) => {
+    const client = await makeClient("invalid-agent-output");
+    await storeCredential(client, CLIENT_A_SECRET);
+    const result = await executeRun(
+      deps(makeOrbio({ analysisContent }).client),
+      runRequest(client, `invalid-agent-${_label}`),
+    );
+    expect(result.status).not.toBe("succeeded");
+    const row = await runStore.getById(result.runId);
+    expect(row?.status).not.toBe("succeeded");
+  });
+
+  it.each([
+    ["unsupported tool call", [{ id: "tool-1", name: "delete_everything", arguments: '{"url":"https://example.com"}' }]],
+    ["malformed tool arguments", [{ id: "tool-1", name: "inspect_public_website", arguments: "{not-json" }]],
+  ])("fails closed for %s", async (_label, toolCalls) => {
+    const client = await makeClient("invalid-tool-output");
+    await storeCredential(client, CLIENT_A_SECRET);
+    const result = await executeRun(
+      deps(makeOrbio({ toolCalls }).client),
+      runRequest(client, `invalid-tool-${_label}`),
+    );
+    expect(result.status).not.toBe("succeeded");
+    const row = await runStore.getById(result.runId);
+    expect(row?.status).not.toBe("succeeded");
   });
 
   it("resolves only the requesting client's credential", async () => {
@@ -367,7 +418,7 @@ describe("executeRun", () => {
     expect(row?.status).toBe("reconciliation_failed");
     // The charge evidence is preserved for investigation.
     expect(row?.generationId).toBe("gen-test-2");
-    expect(row?.costUsd).toBe("0.000026");
+    expect(row?.costUsd).toBe("0.000026000000");
   });
 
   it("marks a failed balance-after read as reconciliation_failed", async () => {

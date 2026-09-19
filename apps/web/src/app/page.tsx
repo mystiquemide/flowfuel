@@ -61,7 +61,7 @@ export default function Home() {
           totalSpentUsd: run.costUsd ?? "0.000000",
         })));
       } catch {
-        // Landing shows an honest empty state when live data is unreachable.
+        // Landing shows an honest empty state when recorded evidence is unreachable.
       }
     })();
     return () => {
@@ -472,7 +472,7 @@ export default function Home() {
                 {liveClients === null && (
                   <tr>
                     <td colSpan={5} style={{ padding: "14px 16px", fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
-                      Loading live client data…
+                      Loading recorded execution evidence…
                     </td>
                   </tr>
                 )}
@@ -577,7 +577,7 @@ export default function Home() {
                 fontWeight: 600,
               }}
             >
-              VERIFIED LIVE
+              RECORDED LIVE EXECUTION
             </span>
             <h2
               style={{
@@ -616,7 +616,7 @@ export default function Home() {
                   color: "var(--ink-muted)",
                 }}
               >
-                {liveRuns === null ? "Loading live run data…" : "No runs recorded yet. Run the workflow to produce the first receipt."}
+                {liveRuns === null ? "Loading recorded execution evidence…" : "No runs recorded yet. Run the workflow to produce the first receipt."}
               </div>
             )}
 

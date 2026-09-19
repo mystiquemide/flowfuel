@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 const HTTP_BY_CODE: Record<string, number> = {
   VALIDATION_FAILED: 400,
   UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
   RATE_LIMITED: 429,

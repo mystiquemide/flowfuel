@@ -35,6 +35,14 @@ interface PublicReceipt {
   taskHash: string;
   model: string;
   generationId: string | null;
+  generations: Array<{
+    generationId: string;
+    phase: "plan" | "analysis";
+    model: string;
+    costUsd: string;
+    promptTokens: number;
+    completionTokens: number;
+  }>;
   balanceBefore: string | null;
   costUsd: string | null;
   balanceAfter: string | null;
@@ -43,7 +51,7 @@ interface PublicReceipt {
   activationExplorerUrl: string | null;
   startedAt: string;
   completedAt: string | null;
-  source: "live";
+  source: "recorded_live_execution";
 }
 
 interface PairData {
@@ -157,7 +165,7 @@ function ProofInner() {
   const handleDownloadJson = () => {
     if (!pair) return;
     const payload = {
-      source: "live",
+      source: "recorded_live_execution",
       fetchedAt: loadedAt?.toISOString(),
       invariant: "Every client runs against their own isolated Orbio balance.",
       chainId: 4663,
@@ -263,7 +271,7 @@ function ProofInner() {
               marginBottom: 4,
             }}
           >
-            LIVE VERIFICATION
+            RECORDED LIVE EXECUTION
           </span>
           <h1
             style={{
@@ -282,7 +290,7 @@ function ProofInner() {
           </p>
           {pair && loadedAt && (
             <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--ink-subtle)", margin: "0 0 16px" }}>
-              workflow run {pair.workflowRunId} · live · rendered {loadedAt.toLocaleTimeString("en-GB", { timeZone: "UTC" })} UTC
+              workflow run {pair.workflowRunId} · recorded live execution · rendered {loadedAt.toLocaleTimeString("en-GB", { timeZone: "UTC" })} UTC
             </p>
           )}
 
@@ -333,7 +341,7 @@ function ProofInner() {
 
         {loading && (
           <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
-            Loading live run data…
+            Loading recorded execution evidence…
           </p>
         )}
         {loadError && (
@@ -431,6 +439,9 @@ function ProofInner() {
                 </h2>
                 <div style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
                   Same n8n execution · same task payload · different payer balances
+                </div>
+                <div style={{ margin: "8px 0 0", fontSize: "0.6875rem", color: "var(--ink-subtle)" }}>
+                  Generation entries preserve provider precision. The aggregate cost is authoritative for balance reconciliation.
                 </div>
               </div>
 
@@ -544,13 +555,28 @@ function ProofInner() {
                     </tr>
                     <tr style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
-                        Cost
+                        Aggregate cost
                       </td>
                       {orderedRuns.map((run) => (
                         <td key={run.runId} style={{ padding: "12px 16px", color: run.costUsd ? "var(--danger)" : "var(--ink-muted)" }}>
                           {run.costUsd ? `-$${run.costUsd}` : "$0.000000 (No Charge)"}
                         </td>
                       ))}
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Generation costs
+                      </td>
+                      {orderedRuns.map((run) => {
+                        const receipt = pair.receipts[run.runId];
+                        return (
+                          <td key={run.runId} style={{ padding: "12px 16px", color: "var(--ink-muted)" }}>
+                            {receipt?.generations.length
+                              ? receipt.generations.map((generation) => `${generation.phase} $${generation.costUsd}`).join(" · ")
+                              : "none"}
+                          </td>
+                        );
+                      })}
                     </tr>
                     <tr style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>

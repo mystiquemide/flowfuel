@@ -39,7 +39,7 @@ export const publicReceiptSchema = z.strictObject({
   activationContext: z.literal("recorded_at_run_start").nullable(),
   startedAt: isoTimestampSchema,
   completedAt: isoTimestampSchema.nullable(),
-  source: z.literal("live"),
+  source: z.literal("recorded_live_execution"),
 });
 export type PublicReceipt = z.infer<typeof publicReceiptSchema>;
 
@@ -141,6 +141,6 @@ export function toPublicReceipt(
     activationContext: activationTxHash ? "recorded_at_run_start" : null,
     startedAt: run.startedAt,
     completedAt: run.completedAt,
-    source: "live",
+    source: "recorded_live_execution",
   });
 }

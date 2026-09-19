@@ -10,6 +10,7 @@ import {
   activateCredit,
   approveUsdg,
   buyAndActivateCredit,
+  authenticateClient,
   connectInjected,
   exchangeMaxFillsOnchain,
   injectedChainId,
@@ -37,6 +38,13 @@ interface ClientDetail {
   latestActivation: { transactionHash: string; activationId: number | null } | null;
 }
 
+interface ClientBootstrap {
+  id: string;
+  displayName: string;
+  walletAddress: string;
+  chainId: number;
+}
+
 interface ClientListEntry {
   id: string;
   slug: string;
@@ -58,6 +66,7 @@ function OnboardInner() {
   const clientParam = searchParams.get("client");
 
   const [clients, setClients] = useState<ClientListEntry[] | null>(null);
+  const [bootstrap, setBootstrap] = useState<ClientBootstrap | null>(null);
   const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -84,16 +93,30 @@ function OnboardInner() {
     }
   }, []);
 
+  const loadBootstrap = useCallback(async (idOrSlug: string) => {
+    try {
+      const res = await fetch(`/api/clients/${idOrSlug}/bootstrap`, { cache: "no-store" });
+      if (!res.ok) throw new Error(await readApiError(res));
+      const body = (await res.json()) as ClientBootstrap;
+      setBootstrap(body);
+      setLoadError(null);
+      return body;
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load client link");
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     queueMicrotask(() => {
       if (clientParam) {
-        void loadDetail(clientParam);
+        void loadBootstrap(clientParam);
       } else {
         setClients([]);
         setLoadError("Open the client-specific funding link sent by your agency.");
       }
     });
-  }, [clientParam, loadDetail]);
+  }, [clientParam, loadBootstrap]);
 
   async function pickClient(id: string) {
     setDetail(null);
@@ -108,6 +131,14 @@ function OnboardInner() {
       setAccount(addr);
       const chain = await injectedChainId().catch(() => null);
       setChainId(chain);
+      if (!bootstrap) throw new Error("Client link is still loading. Try again.");
+      if (getAddress(addr) !== getAddress(bootstrap.walletAddress)) {
+        setPhase({ kind: "idle" });
+        return;
+      }
+      setPhase({ kind: "working", label: "Verifying wallet ownership" });
+      await authenticateClient(bootstrap.id, addr);
+      await loadDetail(bootstrap.id);
       setPhase({ kind: "idle" });
     } catch (err) {
       setPhase({ kind: "error", message: err instanceof Error ? err.message : "Couldn't connect the wallet. Try again." });
@@ -127,6 +158,7 @@ function OnboardInner() {
     const eth = injectedProvider();
     setAccount(null);
     setChainId(null);
+    setDetail(null);
     setPhase({ kind: "idle" });
     try {
       await eth?.request({
@@ -146,10 +178,11 @@ function OnboardInner() {
     allowanceUnits > BigInt(0) &&
     transferableUnits !== null &&
     allowanceUnits <= transferableUnits;
+  const expectedWallet = detail?.walletAddress ?? bootstrap?.walletAddress ?? null;
   const walletMismatch =
     account !== null &&
-    detail !== null &&
-    getAddress(account) !== getAddress(detail.walletAddress);
+    expectedWallet !== null &&
+    getAddress(account) !== getAddress(expectedWallet);
   const wrongChain = account !== null && chainId !== null && chainId !== ROBINHOOD_CHAIN_ID;
 
   useEffect(() => {
@@ -416,6 +449,42 @@ function OnboardInner() {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {clientParam && !detail && bootstrap && (
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              backgroundColor: "var(--surface)",
+              padding: "18px 20px",
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", color: "var(--fuel)", letterSpacing: "0.06em", marginBottom: 6 }}>
+              CLIENT LINK
+            </div>
+            <h2 style={{ margin: "0 0 8px", fontSize: "1.1rem", fontWeight: 550 }}>{bootstrap.displayName}</h2>
+            <p style={{ margin: "0 0 4px", color: "var(--ink-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
+              Expected wallet: {truncateMiddle(bootstrap.walletAddress, 8, 6)}
+            </p>
+            <p style={{ margin: "0 0 14px", color: "var(--ink-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
+              Robinhood Chain {bootstrap.chainId}
+            </p>
+            {account && walletMismatch && (
+              <p style={{ margin: "0 0 12px", color: "var(--danger)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
+                Wrong wallet connected. Switch to the expected client wallet.
+              </p>
+            )}
+            <button
+              onClick={() => void handleConnect()}
+              disabled={phase.kind === "working"}
+              className="btn-primary-action"
+              style={{ backgroundColor: "var(--fuel)", color: "#ffffff", border: "none", padding: "8px 14px", borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", opacity: phase.kind === "working" ? 0.55 : 1 }}
+            >
+              {account && !walletMismatch ? "Verify wallet and continue" : "Connect wallet"}
+            </button>
           </div>
         )}
 

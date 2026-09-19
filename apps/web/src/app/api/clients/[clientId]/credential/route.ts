@@ -11,6 +11,7 @@ import {
   registerCredential,
   revokeCredential,
 } from "../../../../../lib/registration";
+import { assertClientSession } from "../../../../../lib/client-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function PUT(
   try {
     const { clientId } = await context.params;
     uuidSchema.parse(clientId);
+    assertClientSession(request, clientId);
     const input = registerCredentialRequestSchema.parse(
       await parseJson(request),
     );
@@ -48,6 +50,7 @@ export async function DELETE(
   try {
     const { clientId } = await context.params;
     uuidSchema.parse(clientId);
+    assertClientSession(request, clientId);
     const input = revokeCredentialRequestSchema.parse(await parseJson(request));
     const result = await revokeCredential(registrationDeps(), clientId, input);
     return Response.json(result);

@@ -266,6 +266,26 @@ export async function signNonceMessage(
   return client.signMessage({ account, message });
 }
 
+/** Proves wallet ownership and receives the short-lived client session cookie. */
+export async function authenticateClient(
+  clientId: string,
+  account: `0x${string}`,
+): Promise<void> {
+  const { nonce, message } = await issueNonce(clientId, "connect");
+  const signature = await signNonceMessage(account, message);
+  const res = await fetch("/api/auth/verify", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      clientId,
+      nonce,
+      walletAddress: account,
+      signature,
+    }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+}
+
 /** Converts a decimal USD string to CREDIT base units without float drift. */
 export function usdToUnits(amount: string): bigint {
   const trimmed = amount.trim();

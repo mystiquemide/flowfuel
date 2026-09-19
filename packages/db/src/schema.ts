@@ -142,7 +142,7 @@ export const runs = pgTable(
     activationTxHash: text("activation_tx_hash"),
     balanceBefore: numeric("balance_before", { precision: 20, scale: 6 }),
     balanceAfter: numeric("balance_after", { precision: 20, scale: 6 }),
-    costUsd: numeric("cost_usd", { precision: 20, scale: 6 }),
+    costUsd: numeric("cost_usd", { precision: 24, scale: 12 }),
     promptTokens: integer("prompt_tokens"),
     completionTokens: integer("completion_tokens"),
     errorCode: text("error_code"),

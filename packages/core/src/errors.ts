@@ -3,6 +3,7 @@ import { z } from "zod";
 export const ERROR_CODES = [
   "VALIDATION_FAILED",
   "UNAUTHORIZED",
+  "FORBIDDEN",
   "NOT_FOUND",
   "CONFLICT",
   "RATE_LIMITED",
@@ -20,6 +21,7 @@ export type ErrorCode = z.infer<typeof errorCodeSchema>;
 const CLIENT_ACTIONS: Record<ErrorCode, string> = {
   VALIDATION_FAILED: "Fix the request fields and try again.",
   UNAUTHORIZED: "Authenticate the request and try again.",
+  FORBIDDEN: "This session cannot access the requested client.",
   NOT_FOUND: "Check the referenced record.",
   CONFLICT: "Resolve the conflicting state and retry.",
   RATE_LIMITED: "Wait for the rate limit window and retry.",

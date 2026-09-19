@@ -1,17 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { createWalletClient, custom, getAddress } from "viem";
+import { getAddress } from "viem";
 import {
   deriveOrbioCredential,
   orbioKeyMessage,
   ROBINHOOD_CHAIN_ID,
 } from "@flowfuel/core";
+import {
+  authenticateClient,
+  issueNonce,
+  readApiError,
+  walletClientFor,
+} from "@/lib/browser";
 
 interface ConnectFlowProps {
   clientId: string;
   walletAddress: string;
-  status: string;
   hasCredential: boolean;
   epoch: number | null;
 }
@@ -52,15 +57,6 @@ const button = {
   cursor: "pointer",
 } as const;
 
-async function readError(res: Response): Promise<string> {
-  try {
-    const body = await res.json();
-    return body.action ?? body.code ?? `HTTP ${res.status}`;
-  } catch {
-    return `HTTP ${res.status}`;
-  }
-}
-
 export function ConnectFlow(props: ConnectFlowProps) {
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const [account, setAccount] = useState<string | null>(null);
@@ -81,7 +77,7 @@ export function ConnectFlow(props: ConnectFlowProps) {
     }
     setStep({ kind: "working", label: "Connecting wallet" });
     try {
-      const client = createWalletClient({ transport: custom(eth as never) });
+      const client = walletClientFor(eth);
       const [addr] = await client.requestAddresses();
       if (!addr) throw new Error("Wallet returned no address");
       setAccount(getAddress(addr));
@@ -111,21 +107,7 @@ export function ConnectFlow(props: ConnectFlowProps) {
     if (!eth) return;
     setStep({ kind: "working", label: "Signing verification message" });
     try {
-      const nonceRes = await fetch("/api/auth/nonce", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clientId: props.clientId, purpose: "connect" }),
-      });
-      if (!nonceRes.ok) throw new Error(await readError(nonceRes));
-      const { nonce, message } = await nonceRes.json();
-      const client = createWalletClient({ transport: custom(eth as never) });
-      const signature = await client.signMessage({ account: account as `0x${string}`, message });
-      const verifyRes = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clientId: props.clientId, nonce, walletAddress: account, signature }),
-      });
-      if (!verifyRes.ok) throw new Error(await readError(verifyRes));
+      await authenticateClient(props.clientId, account as `0x${string}`);
       setStep({ kind: "verified" });
     } catch (err) {
       setStep({ kind: "error", message: err instanceof Error ? err.message : "Verification failed" });
@@ -138,20 +120,14 @@ export function ConnectFlow(props: ConnectFlowProps) {
     if (!eth) return;
     setStep({ kind: "working", label: "Signing Orbio credential message" });
     try {
-      const client = createWalletClient({ transport: custom(eth as never) });
+      const client = walletClientFor(eth);
       const credentialSig = await client.signMessage({
         account: account as `0x${string}`,
         message: orbioKeyMessage(ROBINHOOD_CHAIN_ID, epoch),
       });
       const orbioCredential = deriveOrbioCredential(credentialSig, epoch);
       setStep({ kind: "working", label: "Signing registration message" });
-      const nonceRes = await fetch("/api/auth/nonce", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clientId: props.clientId, purpose }),
-      });
-      if (!nonceRes.ok) throw new Error(await readError(nonceRes));
-      const { nonce, message } = await nonceRes.json();
+      const { nonce, message } = await issueNonce(props.clientId, purpose);
       const signature = await client.signMessage({ account: account as `0x${string}`, message });
       setStep({ kind: "working", label: "Registering credential" });
       const putRes = await fetch(`/api/clients/${props.clientId}/credential`, {
@@ -166,7 +142,7 @@ export function ConnectFlow(props: ConnectFlowProps) {
           signature,
         }),
       });
-      if (!putRes.ok) throw new Error(await readError(putRes));
+      if (!putRes.ok) throw new Error(await readApiError(putRes));
       const result = await putRes.json();
       setStep({ kind: "done", status: result.status, balance: result.balance });
     } catch (err) {

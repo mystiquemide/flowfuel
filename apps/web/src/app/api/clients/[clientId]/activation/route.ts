@@ -13,6 +13,7 @@ import {
 import { databaseUrlFromEnv } from "../../../../../lib/env";
 import { errorResponse, parseJson } from "../../../../../lib/http";
 import { verifyActivationTransaction } from "../../../../../lib/chain";
+import { assertClientSession } from "../../../../../lib/client-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export async function POST(
   try {
     const { clientId } = await context.params;
     uuidSchema.parse(clientId);
+    assertClientSession(request, clientId);
     const { transactionHash } = recordActivationRequestSchema.parse(
       await parseJson(request),
     );

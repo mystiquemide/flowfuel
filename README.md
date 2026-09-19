@@ -36,7 +36,7 @@ Orbio turns inference into a wallet-funded onchain resource. FlowFuel uses that 
 - Client C (funded through `buyAndActivate`): the same agent completed with two generations and a `$0.000074` charge. [Receipt](https://flowfuel.midelabs.xyz/api/runs/e50a5419-328f-49b6-9aaa-9c70f0497d9f/receipt)
 - A task priced above the balance: `HTTP 402`, nothing charged. [Receipt](https://flowfuel.midelabs.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt)
 - Client C self-funded with USDG through the Orbio exchange's `buyAndActivate`, wallet as beneficiary. [Tx](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9)
-- Every number above resolves from the live gateway or the public explorer, not from this README.
+- Every proof value comes from a real execution, an Orbio gateway response, or an onchain transaction. FlowFuel preserves the resulting generation, cost, balance, and activation evidence in public-safe receipts.
 
 ## Live product paths
 
@@ -53,7 +53,7 @@ The shared n8n workflow invokes one scoped Lead Intelligence Agent for every cli
 3. Orbio reasons over the observed site and returns schema-validated JSON with qualification, findings, risks, recommended action, confidence and source URLs.
 4. n8n maps the structured qualification to `route_to_sales` or `manual_review`.
 
-The plan and analysis are separate Orbio generations. FlowFuel stores both generation IDs and costs, aggregates the charge, and reconciles the aggregate against the wallet's balance change. Agent output is encrypted at rest so an idempotent retry returns the original useful result without another inference call.
+The plan and analysis are separate Orbio generations. FlowFuel stores both generation IDs and provider-precision costs, aggregates the charge from that same precision, and reconciles the aggregate against the wallet's balance change. Agent output is encrypted at rest so an idempotent retry returns the original useful result without another inference call.
 
 ## How it works
 
@@ -94,7 +94,7 @@ flowchart LR
 | Client A activation | `activate()` tx, beneficiary = A's wallet | [explorer](https://robin.etherscan.io/tx/0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed) |
 | Client C direct activation | `activate()` tx, activation ID 239 | [explorer](https://robin.etherscan.io/tx/0x3654d2b614f4f62977ecf7059f99be021d6c1c27076325d077b4101fc1889889) |
 | Client C exchange funding | `buyAndActivate` txs, activations 240 and 241, beneficiary = C's wallet | [tx 1](https://robin.etherscan.io/tx/0xfb47884fe7af03cff094935e4030603235e04f3d4354c40ae7fe6fa6ebf1f30b), [tx 2](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9) |
-| Client C credited balance | 0.008 direct + 0.122887 + 0.131362 exchange = $0.261849 activated, live in the gateway | [/agency](https://flowfuel.midelabs.xyz/agency) |
+| Client C funding evidence | 0.008 direct + 0.122887 + 0.131362 exchange = $0.261849 activated across the recorded funding transactions | [receipt](https://flowfuel.midelabs.xyz/api/runs/e50a5419-328f-49b6-9aaa-9c70f0497d9f/receipt) · [tx 1](https://robin.etherscan.io/tx/0xfb47884fe7af03cff094935e4030603235e04f3d4354c40ae7fe6fa6ebf1f30b) · [tx 2](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9) |
 | Contracts | CREDIT, Exchange, USDG on Robinhood Chain | [CREDIT](https://robin.etherscan.io/address/0xe33322da1380e61e5ae5dfb21e7f62924c73004c) · [Exchange](https://robin.etherscan.io/address/0x6951ffd32630b05e06f50062aea801625a58ebc0) · [USDG](https://robin.etherscan.io/address/0x5fc5360d0400a0fd4f2af552add042d716f1d168) |
 | Attack coverage | Replay, spoofed client ID, wrong beneficiary, foreign emitter, reverted receipt, wrong sender, double-charge | `apps/web/test/chain.test.ts`, `apps/web/test/registration.test.ts`, `packages/db/test/stores.test.ts` |
 | Tests | Full core, DB, broker and web suites run in CI | `pnpm test` |
@@ -135,11 +135,14 @@ Requirements: Node 24, pnpm, Docker.
 
 ```bash
 pnpm install
-docker compose up -d postgres n8n
-cp .env.example .env.local   # fill in DATABASE_URL, keys, tokens
+cp .env.example .env.local
+# fill in DATABASE_URL, keys, tokens, and CLIENT_SESSION_SECRET
+docker compose --env-file .env.local up -d postgres n8n
 pnpm -F @flowfuel/db db:migrate
 pnpm dev                     # web app on :3000 and broker on :4010
 ```
+
+The root `pnpm dev` script starts both the web app and broker in parallel.
 
 Import `n8n/workflows/client-funded-agent.json` into n8n. Set `FLOWFUEL_BROKER_URL` and `FLOWFUEL_WORKFLOW_TOKEN` in the n8n container environment. Set `AGENCY_PASSWORD` and an independent random `AGENCY_SESSION_SECRET` before opening the agency workspace.
 
