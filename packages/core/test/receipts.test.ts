@@ -23,6 +23,7 @@ const sourceRun: ReceiptSource = {
     {
       generationId: "gen-1789751867",
       phase: "analysis",
+      model: "google/gemini-2.5-flash",
       costUsd: "0.000026",
       promptTokens: 20,
       completionTokens: 10,

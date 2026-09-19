@@ -97,6 +97,7 @@ export type TaskType = z.infer<typeof taskTypeSchema>;
 
 export const MODEL_ALLOWLIST = [
   "mistralai/mistral-nemo",
+  "deepseek/deepseek-v4-flash-0731",
   "google/gemini-2.5-flash",
 ] as const;
 export const modelSchema = z.enum(MODEL_ALLOWLIST);
@@ -138,6 +139,7 @@ export type LeadIntelligenceResult = z.infer<typeof leadIntelligenceResultSchema
 export const generationEvidenceSchema = z.strictObject({
   generationId: z.string().min(1).max(128),
   phase: z.enum(["plan", "analysis"]),
+  model: modelSchema,
   costUsd: decimalStringSchema,
   promptTokens: z.number().int().nonnegative(),
   completionTokens: z.number().int().nonnegative(),

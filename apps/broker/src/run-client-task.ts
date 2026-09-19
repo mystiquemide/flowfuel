@@ -52,6 +52,8 @@ const TASK_PROMPTS: Record<RunRequest["task"]["type"], string> = {
     "You are a lead intelligence agent. Inspect the supplied public company website, identify evidence relevant to qualification, assess opportunity and risk, then recommend the next sales action. Never invent evidence. Be concise: at most three findings, three risks, and three sources.",
 };
 
+const TOOL_MODEL: AllowedModel = "deepseek/deepseek-v4-flash-0731";
+
 const INSPECT_TOOL = {
   type: "function",
   function: {
@@ -310,6 +312,7 @@ async function executeLocked(
   const generationEvidenceSeen: Array<{
     generationId: string;
     phase: "plan" | "analysis";
+    model: AllowedModel;
     costUsd: string;
     promptTokens: number;
     completionTokens: number;
@@ -334,7 +337,7 @@ async function executeLocked(
         const plan = await deps.orbio.createChatCompletion(
           plaintext,
           {
-            model: request.model,
+            model: TOOL_MODEL,
             messages: [
               { role: "system", content: TASK_PROMPTS[request.task.type] },
               { role: "user", content: `Lead input:\n${request.task.input}\n\nCall inspect_public_website before deciding.` },
@@ -348,6 +351,7 @@ async function executeLocked(
         generationEvidenceSeen.push({
           generationId: plan.generationId,
           phase: "plan",
+          model: TOOL_MODEL,
           costUsd: decimal(plan.costUsd)!,
           promptTokens: plan.promptTokens,
           completionTokens: plan.completionTokens,
@@ -387,6 +391,7 @@ async function executeLocked(
         generationEvidenceSeen.push({
           generationId: completion.generationId,
           phase: "analysis",
+          model: request.model,
           costUsd: decimal(completion.costUsd)!,
           promptTokens: completion.promptTokens,
           completionTokens: completion.completionTokens,
