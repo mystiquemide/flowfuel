@@ -453,12 +453,14 @@ evaluated from live Orbio gateway state. Spending limits are enforced onchain.
 Exchange activation can index asynchronously, so FlowFuel distinguishes a
 confirmed transaction from an indexed Orbio balance.
 
-The recorded Client D proof includes a real vault refuel, `0.980294` USDG
-spent, `1.270873` CREDIT received, activation ID `273`, and the Client D wallet
-as beneficiary. The trigger run records the refuel and a later run records
-successful agent continuation after indexing. [Refuel receipt](https://flowfuel.midelabs.xyz/api/runs/205e8989-e41b-42ee-97eb-c9e0f8ec5eb1/receipt) · [Continuation receipt](https://flowfuel.midelabs.xyz/api/runs/02077a0a-5c8b-42b5-993d-d372f55ec15f/receipt) · [Refuel transaction](https://robin.etherscan.io/tx/0xc55f4c93e99e5afb15e6c80384a8c724f832b415242e8d2ba481060d305f714a)
+The first tiny Client D transaction exposed a protocol-specific accounting
+detail before the public proof was finalized. The Exchange transferred the
+full `0.999900` USDG input while its return field reported `0.980294` matched
+USDG. FlowFuel now accounts the actual USDG token balance delta and rejects
+invalid output. That original transaction remains available as a diagnostic,
+not as a clean custody proof.
 
-The deployed vault proof anchor is [FlowFuelRefuelVault](https://robin.etherscan.io/address/0x919Fbc43b5F59778e05E7Df872F130e75fB2C906), deployed in transaction [0x558d3a1f](https://robin.etherscan.io/tx/0x558d3a1fd87ed2068e12cdb8b33de9347154d46926a124326d4ae18edea93d98).
+The corrected vault is [FlowFuelRefuelVault](https://robin.etherscan.io/address/0x22711eEe32f96c8462471A12d8f32cEA24C09d15), deployed in transaction [0xf0681ced](https://robin.etherscan.io/tx/0xf0681ceda82f9f2015a628db58821e0af7059030040cd81c03e3499589d24272). A fresh tiny Client D reserve is required before the autonomous-refuel proof is re-enabled.
 
 The agency operates the agent. The client sets the budget. FlowFuel keeps it
 running.
@@ -479,10 +481,10 @@ running.
   tiny funds and a separate demo wallet. Do not deposit funds you cannot lose.
 - The trigger threshold is evaluated offchain from the live Orbio gateway. The
   reserve and spending limits are contract-enforced.
-- The Client D proof used a tiny `$1` reserve and a `$0.50` trigger. After the
-  first refuel, the remaining reserve is intentionally small and later blocked
-  checks use reduced refill values. This is proof state, not a production
-  funding recommendation.
+- The first tiny Client D transaction was retired from public proof after it
+  revealed that the live Exchange pulls the full input while reporting a lower
+  matched amount. The corrected vault uses the actual token balance delta.
+- A fresh Client D reserve and a second clean live proof are still required.
 
 ---
 

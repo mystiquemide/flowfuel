@@ -19,8 +19,10 @@ Financial rules enforced by the contract:
 - the maximum configured refill must fit inside the current weekly cap;
 - `MAX_FILLS` is read from the live Exchange contract;
 - the exchange allowance is exact for one call and cleared afterward;
-- the returned `usdgSpent` is the amount deducted from the reserve and weekly
-  usage.
+- reserve and weekly usage are deducted by the actual USDG balance delta. The
+  live Exchange can pull the full `usdgIn` input while its returned
+  `usdgSpent` field reports only the matched order amount, so the vault does
+  not trust that field for client accounting.
 
 The Orbio inference-balance threshold is evaluated offchain from the live
 gateway. The vault has no oracle and does not claim to enforce that threshold.

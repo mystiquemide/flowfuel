@@ -100,6 +100,7 @@ contract MockExchange is IOrbioExchange {
     Quote public quote =
         Quote({ creditOut: 1_400_000, usdgSpent: 1_000_000, feeAtoms: 20_000, fills: 1, reason: 0 });
     bool public revertOnBuy;
+    bool public consumeFullInput;
     bytes32 public lastBeneficiary;
     uint256 public lastMinCreditOut;
     uint256 public lastAllowance;
@@ -118,6 +119,10 @@ contract MockExchange is IOrbioExchange {
 
     function setRevertOnBuy(bool value) external {
         revertOnBuy = value;
+    }
+
+    function setConsumeFullInput(bool value) external {
+        consumeFullInput = value;
     }
 
     function getQuote(uint256, uint256 requestedMaxFills) external view returns (Quote memory) {
@@ -142,7 +147,7 @@ contract MockExchange is IOrbioExchange {
         lastBeneficiary = beneficiary;
         lastMinCreditOut = minCreditOut;
         lastAllowance = token.allowance(msg.sender, address(this));
-        token.transferFrom(msg.sender, address(this), quote.usdgSpent);
+        token.transferFrom(msg.sender, address(this), consumeFullInput ? usdgIn : quote.usdgSpent);
         return (quote.creditOut, quote.usdgSpent, 77);
     }
 }
@@ -353,6 +358,30 @@ contract FlowFuelRefuelVaultTest is TestBase {
         vault.refuel(CLIENT_A);
         assertEq(exchange.lastMinCreditOut(), 1_372_000);
         assertEq(exchange.lastAllowance(), ONE_USDG);
+    }
+
+    function testReserveAccountingUsesActualTokenOutflow() public {
+        depositAs(CLIENT_A, 2 * ONE_USDG);
+        configureAs(CLIENT_A, EXECUTOR, ONE_USDG, 3 * ONE_USDG, 200);
+        exchange.setQuote(
+            IOrbioExchange.Quote({
+                creditOut: 1_270_873,
+                usdgSpent: 980_294,
+                feeAtoms: 19_606,
+                fills: 2,
+                reason: 0
+            })
+        );
+        exchange.setConsumeFullInput(true);
+
+        vm.prank(EXECUTOR);
+        (, uint256 usdgSpent,) = vault.refuel(CLIENT_A);
+
+        assertEq(usdgSpent, ONE_USDG);
+        assertEq(vault.reserves(CLIENT_A), ONE_USDG);
+        assertEq(token.balanceOf(address(vault)), ONE_USDG);
+        (, uint256 weekSpent) = vault.currentWeeklyUsage(CLIENT_A);
+        assertEq(weekSpent, ONE_USDG);
     }
 
     function testExchangeRevertDoesNotConsumeReserveOrAllowance() public {

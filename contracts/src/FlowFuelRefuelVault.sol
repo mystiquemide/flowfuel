@@ -186,6 +186,7 @@ contract FlowFuelRefuelVault is ReentrancyGuard {
      * @dev The executor cannot provide a beneficiary. The only beneficiary
      *      passed to Orbio Exchange is the `client` argument encoded here.
      */
+    // slither-disable-next-line reentrancy-no-eth
     function refuel(address client)
         external
         nonReentrant
@@ -216,16 +217,13 @@ contract FlowFuelRefuelVault is ReentrancyGuard {
         uint256 minCreditOut = quote.creditOut * (BPS - uint256(policy.maxSlippageBps)) / BPS;
         if (minCreditOut == 0) revert QuoteUnavailable();
 
-        // Exact temporary allowance. There is no persistent exchange allowance.
-        USDG.forceApprove(address(EXCHANGE), policy.refillAmount);
-        (creditOut, usdgSpent, activationId) = EXCHANGE.buyAndActivate(
+        uint256 exchangeUsdgSpent;
+        (creditOut, exchangeUsdgSpent, activationId, usdgSpent) = _executeExchange(
             policy.refillAmount, minCreditOut, bytes32(uint256(uint160(client))), maxFills
         );
-        USDG.forceApprove(address(EXCHANGE), 0);
-
         if (
-            creditOut == 0 || usdgSpent == 0 || usdgSpent > policy.refillAmount
-                || usdgSpent > reserve
+            creditOut == 0 || exchangeUsdgSpent == 0 || exchangeUsdgSpent > policy.refillAmount
+                || usdgSpent == 0 || usdgSpent > policy.refillAmount || usdgSpent > reserve
         ) {
             revert InvalidExchangeSpend();
         }
@@ -247,5 +245,38 @@ contract FlowFuelRefuelVault is ReentrancyGuard {
             quote.fills,
             quote.reason
         );
+    }
+
+    /**
+     * @dev Executes one Exchange call with a temporary exact allowance and
+     *      returns the actual USDG balance delta. The Exchange return value is
+     *      retained for validation, but is not used for reserve accounting.
+     */
+    function _executeExchange(
+        uint256 usdgIn,
+        uint256 minCreditOut,
+        bytes32 beneficiary,
+        uint256 maxFills
+    )
+        internal
+        returns (
+            uint256 creditOut,
+            uint256 exchangeUsdgSpent,
+            uint256 activationId,
+            uint256 actualUsdgSpent
+        )
+    {
+        uint256 tokenBalanceBefore = USDG.balanceOf(address(this));
+        USDG.forceApprove(address(EXCHANGE), usdgIn);
+        (creditOut, exchangeUsdgSpent, activationId) =
+            EXCHANGE.buyAndActivate(usdgIn, minCreditOut, beneficiary, maxFills);
+        USDG.forceApprove(address(EXCHANGE), 0);
+
+        uint256 tokenBalanceAfter = USDG.balanceOf(address(this));
+        // The outer refuel call is nonReentrant. Slither cannot follow that
+        // guard through this internal helper when checking the balance delta.
+        // slither-disable-next-line reentrancy-balance
+        if (tokenBalanceAfter > tokenBalanceBefore) revert InvalidExchangeSpend();
+        actualUsdgSpent = tokenBalanceBefore - tokenBalanceAfter;
     }
 }
