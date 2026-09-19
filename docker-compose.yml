@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: flowfuel
       POSTGRES_DB: flowfuel
     ports:
-      - "55432:5432"
+      - "127.0.0.1:55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -24,6 +24,9 @@ services:
       N8N_PORT: 5678
       N8N_PROTOCOL: http
       N8N_SECURE_COOKIE: "false"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      DB_SQLITE_POOL_SIZE: "2"
       GENERIC_TIMEZONE: UTC
       DB_TYPE: sqlite
       # Token n8n presents to POST /api/runs. The workflow JSON reads it as
@@ -34,7 +37,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678"
     volumes:
       - n8ndata:/home/node/.n8n
 
