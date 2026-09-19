@@ -1,5 +1,6 @@
 import { createClientStore, createCredentialStore, createDb, databaseUrl } from "@flowfuel/db";
 
+import { FlowFuelLogo } from "@/components/flowfuel-logo";
 import { ConnectFlow } from "./connect-client";
 
 export const runtime = "nodejs";
@@ -16,9 +17,9 @@ export default async function ConnectPage({ params }: ConnectPageProps) {
   if (!client) {
     return (
       <main style={{ maxWidth: 720, margin: "0 auto", padding: "96px 24px" }}>
-        <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", letterSpacing: "0.045em", color: "var(--fuel)" }}>
-          FLOWFUEL
-        </p>
+        <div style={{ marginBottom: 16 }}>
+          <FlowFuelLogo size={28} />
+        </div>
         <h1 style={{ fontSize: "2rem", fontWeight: 600, letterSpacing: "-0.03em" }}>
           Client not found
         </h1>
@@ -31,9 +32,23 @@ export default async function ConnectPage({ params }: ConnectPageProps) {
   const credential = await createCredentialStore(db).getForClient(clientId);
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "64px 24px 96px" }}>
-      <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", letterSpacing: "0.045em", color: "var(--fuel)", marginBottom: 16 }}>
-        FLOWFUEL · CONNECT
-      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <FlowFuelLogo size={28} />
+        <span
+          style={{
+            fontSize: "0.75rem",
+            fontFamily: "var(--font-mono)",
+            color: "var(--fuel)",
+            backgroundColor: "var(--surface)",
+            padding: "2px 8px",
+            borderRadius: 4,
+            border: "1px solid var(--border)",
+            fontWeight: 600,
+          }}
+        >
+          CONNECT
+        </span>
+      </div>
       <h1 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 600, letterSpacing: "-0.04em", margin: "0 0 8px" }}>
         {client.displayName}
       </h1>

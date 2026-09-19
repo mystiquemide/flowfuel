@@ -1,25 +1,32 @@
 :root {
-  --fuel: #d6ff55;
-  --fuel-hover: #c2ee3d;
-  --ink: #edebe5;
-  --ink-muted: #96938b;
-  --canvas: #0c0d0d;
-  --surface: #141615;
-  --surface-raised: #1b1e1c;
-  --border: #4a4e47;
-  --success: #66d19e;
-  --warning: #f0b85a;
-  --danger: #ef746f;
-  --link: #afc7ff;
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --fuel: #ff4f00;
+  --fuel-hover: #e04500;
+  --fuel-lime: #d6ff55;
+  --ink: #201515;
+  --ink-muted: #55544f;
+  --ink-subtle: #72716d;
+  --canvas: #fffdf9;
+  --surface: #f9f7f3;
+  --surface-raised: #f1efea;
+  --border: #d6d5d2;
+  --border-subtle: #eceae3;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --link: #ff4f00;
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --ease-out-cubic: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -30,8 +37,12 @@ body {
 }
 
 a {
-  color: var(--link);
+  color: var(--ink);
   text-decoration: none;
+}
+
+a:hover {
+  color: var(--fuel);
 }
 
 :focus-visible {
@@ -39,11 +50,369 @@ a {
   outline-offset: 2px;
 }
 
+/* Hero entrance keyframes */
+@keyframes heroFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes heroFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes heroFadeUpSmall {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-hero-eyebrow {
+  animation: heroFadeIn 450ms var(--ease-out-cubic) 0ms both;
+}
+
+.animate-hero-title-main {
+  animation: heroFadeUp 500ms var(--ease-out-cubic) 70ms both;
+}
+
+.animate-hero-title-accent {
+  animation: heroFadeUp 500ms var(--ease-out-cubic) 130ms both;
+}
+
+.animate-hero-copy {
+  animation: heroFadeUp 500ms var(--ease-out-cubic) 190ms both;
+}
+
+.animate-hero-cta {
+  animation: heroFadeUpSmall 450ms var(--ease-out-cubic) 260ms both;
+}
+
+.animate-hero-meta {
+  animation: heroFadeUpSmall 450ms var(--ease-out-cubic) 330ms both;
+}
+
+/* Nav Link Hover Underline */
+.nav-link-subtle {
+  position: relative;
+  transition: color 180ms ease;
+}
+
+.nav-link-subtle::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  background-color: var(--fuel);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 200ms var(--ease-out-cubic);
+}
+
+.nav-link-subtle:hover {
+  color: var(--ink) !important;
+}
+
+.nav-link-subtle:hover::after {
+  transform: scaleX(1);
+}
+
+/* Button Hover Interactions */
+.btn-primary-action {
+  box-shadow: 0 1px 2px rgba(32, 21, 21, 0.08);
+  transition: transform 180ms var(--ease-out-cubic), box-shadow 180ms var(--ease-out-cubic), background-color 180ms var(--ease-out-cubic);
+}
+
+.btn-primary-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(32, 21, 21, 0.12);
+  background-color: var(--fuel-hover) !important;
+}
+
+.btn-primary-action .btn-arrow-icon {
+  display: inline-block;
+  transition: transform 180ms var(--ease-out-cubic);
+}
+
+.btn-primary-action:hover .btn-arrow-icon {
+  transform: translateX(3px);
+}
+
+.btn-secondary-action {
+  transition: transform 180ms var(--ease-out-cubic), border-color 180ms var(--ease-out-cubic), background-color 180ms var(--ease-out-cubic);
+}
+
+.btn-secondary-action:hover {
+  transform: translateY(-1px);
+  border-color: var(--ink) !important;
+  background-color: rgba(32, 21, 21, 0.03) !important;
+}
+
+/* Scroll Reveal Base (Progressive Enhancement: Default visible to prevent disappearing content) */
+.reveal-on-scroll {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 520ms var(--ease-out-cubic), transform 520ms var(--ease-out-cubic);
+  will-change: opacity, transform;
+}
+
+/* Product Preview Reveal with subtle scale */
+.reveal-preview {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 550ms var(--ease-out-cubic), transform 550ms var(--ease-out-cubic);
+  will-change: opacity, transform;
+}
+
+/* Staggered items inside revealed containers */
+.stagger-item {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 480ms var(--ease-out-cubic), transform 480ms var(--ease-out-cubic);
+}
+
+/* Two-client proof cards */
+.proof-card-item {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 480ms var(--ease-out-cubic), transform 480ms var(--ease-out-cubic), box-shadow 200ms var(--ease-out-cubic);
+}
+
+.proof-card-item:hover {
+  box-shadow: 0 4px 16px rgba(32, 21, 21, 0.05);
+}
+
+/* Card status pill */
+.card-status-pill {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 350ms var(--ease-out-cubic) 260ms, transform 350ms var(--ease-out-cubic) 260ms;
+}
+
+/* Preview table status pills */
+.preview-status-pill {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 350ms var(--ease-out-cubic), transform 350ms var(--ease-out-cubic);
+}
+
+/* When JS motion is armed, unrevealed items start at subtle offset */
+.js-motion .reveal-on-scroll:not(.is-revealed) {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+.js-motion .reveal-preview:not(.is-revealed) {
+  opacity: 0;
+  transform: translateY(16px) scale(0.99);
+}
+
+.js-motion .reveal-on-scroll:not(.is-revealed) .stagger-item {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.js-motion .reveal-on-scroll:not(.is-revealed) .proof-card-item {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.js-motion .reveal-on-scroll:not(.is-revealed) .card-status-pill {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.js-motion .reveal-preview:not(.is-revealed) .preview-status-pill {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+/* Revealed active states */
+.reveal-on-scroll.is-revealed,
+.reveal-preview.is-revealed {
+  opacity: 1 !important;
+  transform: translateY(0) scale(1) !important;
+}
+
+.is-revealed .stagger-1 {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  transition-delay: 40ms;
+}
+
+.is-revealed .stagger-2 {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  transition-delay: 120ms;
+}
+
+.is-revealed .stagger-3 {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  transition-delay: 200ms;
+}
+
+.is-revealed .proof-card-a {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  transition-delay: 60ms;
+}
+
+.is-revealed .proof-card-b {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  transition-delay: 160ms;
+}
+
+.is-revealed .card-status-pill {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
+
+.is-revealed .preview-status-1 {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  transition-delay: 140ms;
+}
+
+.is-revealed .preview-status-2 {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  transition-delay: 240ms;
+}
+
+.is-revealed .preview-status-3 {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  transition-delay: 340ms;
+}
+
+/* Product Data Value Emphasis: subtle highlight pulse once when revealed */
+@keyframes dataHighlightPulse {
+  0% {
+    background-color: transparent;
+  }
+  40% {
+    background-color: rgba(214, 255, 85, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.is-revealed .preview-data-highlight {
+  animation: dataHighlightPulse 750ms var(--ease-out-cubic) 280ms 1 normal forwards;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* Benefit Card Interactive Hover */
+.benefit-card-interactive {
+  transition: transform 200ms var(--ease-out-cubic), border-color 200ms var(--ease-out-cubic), box-shadow 200ms var(--ease-out-cubic);
+}
+
+.benefit-card-interactive:hover {
+  transform: translateY(-2.5px);
+  border-color: #bebcb7 !important;
+  box-shadow: 0 4px 16px rgba(32, 21, 21, 0.04);
+}
+
+/* Operational Workspace Utilities */
+.agency-table-row {
+  transition: background-color 140ms ease;
+}
+
+.agency-table-row:hover {
+  background-color: var(--surface) !important;
+}
+
+.btn-quiet-action {
+  background-color: var(--canvas);
+  border: 1px solid #bfbcb6;
+  color: var(--ink);
+  font-weight: 500;
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.btn-quiet-action:hover {
+  border-color: var(--ink) !important;
+  color: var(--ink) !important;
+  background-color: var(--surface-raised) !important;
+}
+
+@keyframes workspaceFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.workspace-page-fade {
+  animation: workspaceFadeIn 350ms var(--ease-out-cubic) both;
+}
+
+.trust-strip-grid {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: space-between;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .trust-strip-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+/* Accessibility: prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .reveal-on-scroll,
+  .reveal-preview,
+  .stagger-item,
+  .proof-card-item,
+  .card-status-pill,
+  .preview-status-pill {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .btn-primary-action:hover,
+  .btn-secondary-action:hover,
+  .benefit-card-interactive:hover {
+    transform: none !important;
+  }
+
+  .btn-primary-action:hover .btn-arrow-icon {
+    transform: none !important;
   }
 }
