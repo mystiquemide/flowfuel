@@ -133,6 +133,78 @@ a:hover {
   transform: scaleX(1);
 }
 
+/* Core Button Styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 10px 18px;
+  cursor: pointer;
+  text-decoration: none;
+  background: transparent;
+  color: var(--ink);
+  transition: transform 180ms var(--ease-out-cubic), box-shadow 180ms var(--ease-out-cubic), background-color 180ms var(--ease-out-cubic), opacity 180ms ease, border-color 180ms ease;
+  user-select: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.btn-primary {
+  background-color: var(--fuel);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 1px 2px rgba(32, 21, 21, 0.08);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--fuel-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(32, 21, 21, 0.12);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Form Input Styles */
+.form-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--fuel);
+  box-shadow: 0 0 0 2px rgba(255, 79, 0, 0.15);
+}
+
+.form-input::placeholder {
+  color: var(--ink-subtle);
+}
+
 /* Button Hover Interactions */
 .btn-primary-action {
   box-shadow: 0 1px 2px rgba(32, 21, 21, 0.08);
@@ -426,7 +498,8 @@ a:hover {
 
   .btn-primary-action:hover,
   .btn-secondary-action:hover,
-  .benefit-card-interactive:hover {
+  .benefit-card-interactive:hover,
+  .btn-primary:hover {
     transform: none !important;
   }
 
