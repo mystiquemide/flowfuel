@@ -14,6 +14,14 @@
   Built on <a href="https://www.orbio.so">Orbio</a> + Robinhood Chain 4663, wired into n8n
 </p>
 
+<p align="center">
+  <a href="https://github.com/mystiquemide/flowfuel/actions/workflows/ci.yml"><img src="https://github.com/mystiquemide/flowfuel/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://www.orbio.so"><img src="https://img.shields.io/badge/orbio-gateway-FF4F00" alt="Orbio" /></a>
+  <a href="https://n8n.io"><img src="https://img.shields.io/badge/n8n-one_workflow-EA4B71" alt="n8n" /></a>
+  <a href="https://robin.etherscan.io"><img src="https://img.shields.io/badge/robinhood_chain-4663-201515" alt="Robinhood Chain 4663" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license" /></a>
+</p>
+
 AI automation agencies today either front every client's model spend and argue about invoices later, or hand everyone one shared provider key and let usage blend into an untraceable bill. FlowFuel is the third option: the agency operates the automation, each client owns the fuel.
 
 ## 30-second proof

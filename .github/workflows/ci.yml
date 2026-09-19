@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.14-alpine
+        env:
+          POSTGRES_USER: flowfuel
+          POSTGRES_PASSWORD: flowfuel
+          POSTGRES_DB: flowfuel
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U flowfuel -d flowfuel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Create test database
+        run: PGPASSWORD=flowfuel psql -h localhost -p 55432 -U flowfuel -d flowfuel -c "CREATE DATABASE flowfuel_test"
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
