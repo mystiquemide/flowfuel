@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://flowfuel.breachresponse.xyz"><strong>Live demo</strong></a> ·
-  <a href="https://flowfuel.breachresponse.xyz/proof">Proof page</a> ·
+  <a href="https://flowfuel.midelabs.xyz"><strong>Live demo</strong></a> ·
+  <a href="https://flowfuel.midelabs.xyz/proof">Proof page</a> ·
   Built on <a href="https://www.orbio.so">Orbio</a> + Robinhood Chain 4663, wired into n8n
 </p>
 
@@ -29,18 +29,18 @@ AI automation agencies today either front every client's model spend and argue a
 ![Live isolation proof: funded Client A succeeds, unfunded Client B is blocked at the gateway](docs/proof.png)
 
 - Same n8n workflow, same task hash `d9f8e86a…df1878`, two wallet identities.
-- Client A (funded): run succeeded, real Orbio generation ID `gen-1789764124-zDWN726GvyqIjnwlEzKL`, exactly `$0.000108` drawn from A's balance. [Receipt](https://flowfuel.breachresponse.xyz/api/runs/4b1a2430-eaac-4dc8-9e23-870e55e0b6f4/receipt)
-- Client B (unfunded): `HTTP 401`, no generation ID, no charge, no fallback to any other balance. [Receipt](https://flowfuel.breachresponse.xyz/api/runs/99181d0b-80c6-46f8-a1a0-4657a0d42846/receipt)
-- A task priced above the balance: `HTTP 402`, nothing charged. [Receipt](https://flowfuel.breachresponse.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt)
+- Client A (funded): run succeeded, real Orbio generation ID `gen-1789764124-zDWN726GvyqIjnwlEzKL`, exactly `$0.000108` drawn from A's balance. [Receipt](https://flowfuel.midelabs.xyz/api/runs/4b1a2430-eaac-4dc8-9e23-870e55e0b6f4/receipt)
+- Client B (unfunded): `HTTP 401`, no generation ID, no charge, no fallback to any other balance. [Receipt](https://flowfuel.midelabs.xyz/api/runs/99181d0b-80c6-46f8-a1a0-4657a0d42846/receipt)
+- A task priced above the balance: `HTTP 402`, nothing charged. [Receipt](https://flowfuel.midelabs.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt)
 - Client C self-funded with USDG through the Orbio exchange's `buyAndActivate`, wallet as beneficiary. [Tx](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9)
 - Every number above resolves from the live gateway or the public explorer, not from this README.
 
 ## Try it
 
-1. Open [/agency](https://flowfuel.breachresponse.xyz/agency). Client A shows an activated balance, Client B shows none.
+1. Open [/agency](https://flowfuel.midelabs.xyz/agency). Client A shows an activated balance, Client B shows none.
 2. Hit **Test Run** on Client A. It succeeds and draws real inference spend.
 3. Hit **Test Run** on Client B. Same workflow, rejected before inference.
-4. Open [/proof](https://flowfuel.breachresponse.xyz/proof) and click any run: task hash, generation ID, upstream status, cost, balance delta, explorer links.
+4. Open [/proof](https://flowfuel.midelabs.xyz/proof) and click any run: task hash, generation ID, upstream status, cost, balance delta, explorer links.
 
 ## How it works
 
@@ -74,13 +74,13 @@ flowchart LR
 
 | Artifact | Value | Link |
 |---|---|---|
-| Funded run receipt | `succeeded`, HTTP 200, $0.009088 - $0.000108 = $0.008980, reconciled | [receipt](https://flowfuel.breachresponse.xyz/api/runs/4b1a2430-eaac-4dc8-9e23-870e55e0b6f4/receipt) |
-| Unfunded run receipt | `client_unfunded`, HTTP 401, zero cost, zero fallback | [receipt](https://flowfuel.breachresponse.xyz/api/runs/99181d0b-80c6-46f8-a1a0-4657a0d42846/receipt) |
-| Over-quota run receipt | `402 insufficient_quota`, balance unchanged | [receipt](https://flowfuel.breachresponse.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt) |
+| Funded run receipt | `succeeded`, HTTP 200, $0.009088 - $0.000108 = $0.008980, reconciled | [receipt](https://flowfuel.midelabs.xyz/api/runs/4b1a2430-eaac-4dc8-9e23-870e55e0b6f4/receipt) |
+| Unfunded run receipt | `client_unfunded`, HTTP 401, zero cost, zero fallback | [receipt](https://flowfuel.midelabs.xyz/api/runs/99181d0b-80c6-46f8-a1a0-4657a0d42846/receipt) |
+| Over-quota run receipt | `402 insufficient_quota`, balance unchanged | [receipt](https://flowfuel.midelabs.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt) |
 | Client A activation | `activate()` tx, beneficiary = A's wallet | [explorer](https://robin.etherscan.io/tx/0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed) |
 | Client C direct activation | `activate()` tx, activation ID 239 | [explorer](https://robin.etherscan.io/tx/0x3654d2b614f4f62977ecf7059f99be021d6c1c27076325d077b4101fc1889889) |
 | Client C exchange funding | `buyAndActivate` txs, activations 240 and 241, beneficiary = C's wallet | [tx 1](https://robin.etherscan.io/tx/0xfb47884fe7af03cff094935e4030603235e04f3d4354c40ae7fe6fa6ebf1f30b), [tx 2](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9) |
-| Client C credited balance | 0.008 direct + 0.122887 + 0.131362 exchange = $0.261849 activated, live in the gateway | [/agency](https://flowfuel.breachresponse.xyz/agency) |
+| Client C credited balance | 0.008 direct + 0.122887 + 0.131362 exchange = $0.261849 activated, live in the gateway | [/agency](https://flowfuel.midelabs.xyz/agency) |
 | Contracts | CREDIT, Exchange, USDG on Robinhood Chain | [CREDIT](https://robin.etherscan.io/address/0xe33322da1380e61e5ae5dfb21e7f62924c73004c) · [Exchange](https://robin.etherscan.io/address/0x6951ffd32630b05e06f50062aea801625a58ebc0) · [USDG](https://robin.etherscan.io/address/0x5fc5360d0400a0fd4f2af552add042d716f1d168) |
 | Attack coverage | Replay, spoofed client ID, wrong beneficiary, foreign emitter, reverted receipt, wrong sender, double-charge | `apps/web/test/chain.test.ts`, `apps/web/test/registration.test.ts`, `packages/db/test/stores.test.ts` |
 | Tests | 198 passing across core, db, broker, web | `pnpm -r test` |
@@ -108,7 +108,7 @@ flowchart LR
 ## Honest limitations
 
 - Unaudited. Do not point it at balances you cannot lose.
-- The demo instance is a single self-hosted VM behind a Cloudflare tunnel, not a hardened multi-zone deployment.
+- The demo instance is a single self-hosted VM on a Cloudflare-proxied domain, not a hardened multi-zone deployment.
 - All workflows share one bearer token today; per-workflow credentials are not built.
 - Exchange-path activations index slower than direct `activate()`: observed roughly a 45-minute lag before the balance credited. They do land, just not instantly.
 - Revoke is unit-tested; the destructive revoke path has not been exercised end-to-end on a live client.
