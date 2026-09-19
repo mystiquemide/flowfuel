@@ -50,16 +50,20 @@ function makeOrbio(): OrbioClient {
         },
       };
     },
-    createChatCompletion: async () => ({
+    createChatCompletion: async (_credential, input) => ({
       upstreamStatus: 200,
       generationId: "gen-sec-1",
       model: "google/gemini-2.5-flash",
       provider: "google",
-      content: "OK",
+      content: input.tools
+        ? null
+        : JSON.stringify({ summary: "Lead", qualification: "medium", findings: [], risks: [], recommendedAction: "Review", confidence: 0.7, sources: [{ title: "Example", url: "https://example.com/" }] }),
       promptTokens: 10,
       completionTokens: 10,
-      costUsd: 0.000026,
+      costUsd: 0.000013,
       balanceAfter: null,
+      toolCalls: input.tools ? [{ id: "tool-1", name: "inspect_public_website", arguments: '{"url":"https://example.com"}' }] : [],
+      webSearchRequests: 0,
     }),
   };
 }
@@ -74,6 +78,7 @@ function deps(orbio: OrbioClient, rateLimiter?: RunDeps["rateLimiter"]): RunDeps
     encryptionKey,
     chainId: ROBINHOOD_CHAIN_ID,
     rateLimiter,
+    inspectWebsite: async () => ({ url: "https://example.com/", title: "Example", text: "Example company" }),
   };
 }
 
@@ -106,7 +111,7 @@ function runRequest(client: ClientRow, workflowRunId: string): RunRequest {
   return {
     clientId: client.id,
     workflowRunId,
-    task: { type: "lead_summary", input: "Summarize the lead" },
+    task: { type: "lead_intelligence", input: "Research https://example.com" },
     model: "google/gemini-2.5-flash",
     maxOutputTokens: 128,
   };

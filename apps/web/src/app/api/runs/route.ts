@@ -16,6 +16,7 @@ import {
 import { databaseUrlFromEnv, workflowTokenFromEnv } from "../../../lib/env";
 import { errorResponse, parseJson } from "../../../lib/http";
 import { runDeps } from "../../../lib/services";
+import { agencySessionFromRequest } from "../../../lib/agency-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,9 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request): Promise<Response> {
   try {
+    if (!agencySessionFromRequest(request)) {
+      throw new FlowFuelError("UNAUTHORIZED", "Agency authentication required");
+    }
     const url = new URL(request.url);
     const workflowRunId = url.searchParams.get("workflowRunId");
     const clientId = url.searchParams.get("clientId") ?? undefined;

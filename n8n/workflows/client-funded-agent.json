@@ -1,5 +1,5 @@
 {
-  "name": "FlowFuel client-funded agent",
+  "name": "FlowFuel client-funded Lead Intelligence Agent",
   "nodes": [
     {
       "parameters": {
@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build the bounded FlowFuel run request from the webhook body.\n// Accepts { clientId, input } for one run or { clientIds: [...], input }\n// to run several clients in a single execution. The task shape is fixed\n// so every client runs the same bounded agent task against its own\n// activated Orbio balance.\nconst body = $json.body ?? {};\nconst clientIds = Array.isArray(body.clientIds) && body.clientIds.length > 0\n  ? body.clientIds\n  : typeof body.clientId === \"string\" && body.clientId.length > 0\n    ? [body.clientId]\n    : [];\nif (clientIds.length === 0) {\n  throw new Error(\"clientId or clientIds is required\");\n}\nfor (const id of clientIds) {\n  if (typeof id !== \"string\" || id.length === 0) {\n    throw new Error(\"each clientId must be a non-empty string\");\n  }\n}\nif (typeof body.input !== \"string\" || body.input.length === 0) {\n  throw new Error(\"input is required\");\n}\nconst input = body.input.slice(0, 8000);\nconst maxOutputTokens = Math.min(\n  Math.max(Number(body.maxOutputTokens) || 256, 1),\n  1024,\n);\nreturn clientIds.map((clientId) => ({\n  json: {\n    clientId,\n    workflowRunId: String($execution.id),\n    task: { type: \"lead_summary\", input },\n    model: \"google/gemini-2.5-flash\",\n    maxOutputTokens,\n  },\n}));\n"
+        "jsCode": "// One shared Lead Intelligence Agent for every client.\n// Input identifies a company and includes its public website URL.\nconst body = $json.body ?? {};\nconst clientIds = Array.isArray(body.clientIds) && body.clientIds.length > 0\n  ? body.clientIds\n  : typeof body.clientId === \"string\" && body.clientId.length > 0\n    ? [body.clientId]\n    : [];\nif (clientIds.length === 0) throw new Error(\"clientId or clientIds is required\");\nfor (const id of clientIds) if (typeof id !== \"string\" || !id) throw new Error(\"each clientId must be a non-empty string\");\nif (typeof body.input !== \"string\" || !body.input) throw new Error(\"input is required\");\nconst input = body.input.slice(0, 8000);\nconst maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 700, 1), 1200);\nreturn clientIds.map((clientId) => ({ json: { clientId, workflowRunId: String($execution.id), task: { type: \"lead_intelligence\", input }, model: \"google/gemini-2.5-flash\", maxOutputTokens } }));\n"
       },
       "id": "a1b2c3d4-0000-4c96-9b1d-flowfuel0002",
       "name": "Build Run Request",
@@ -93,7 +93,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ runId: $json.runId, status: $json.status, result: $json.result, taskHash: $json.receipt.taskHash, receipt: $json.receipt }) }}",
+        "responseBody": "={{ (() => { const decision = JSON.parse($json.result); return JSON.stringify({ runId: $json.runId, status: $json.status, decision, nextAction: decision.qualification === 'high' ? 'route_to_sales' : 'manual_review', taskHash: $json.receipt.taskHash, receipt: $json.receipt }); })() }}",
         "options": {}
       },
       "id": "d4e5f6a7-0000-4c96-9b1d-flowfuel0005",

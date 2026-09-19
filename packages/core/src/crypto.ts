@@ -23,6 +23,12 @@ export interface CredentialAad {
   epoch: number;
 }
 
+export interface RunResultAad {
+  runId: string;
+  clientId: string;
+  taskHash: string;
+}
+
 export function buildAad(aad: CredentialAad): Buffer {
   return Buffer.from(
     `${aad.clientId}|${aad.walletAddress.toLowerCase()}|${aad.chainId}|${aad.epoch}`,
@@ -63,6 +69,32 @@ export function encryptCredential(
   ]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([Buffer.from([VERSION]), iv, tag, ciphertext]);
+}
+
+export function encryptRunResult(
+  key: Buffer,
+  plaintext: string,
+  aad: RunResultAad,
+): Buffer {
+  return encryptCredential(key, plaintext, {
+    clientId: `run-result:${aad.runId}:${aad.clientId}`,
+    walletAddress: aad.taskHash,
+    chainId: 0,
+    epoch: 1,
+  });
+}
+
+export function decryptRunResult(
+  key: Buffer,
+  blob: Buffer,
+  aad: RunResultAad,
+): Buffer {
+  return decryptCredential(key, blob, {
+    clientId: `run-result:${aad.runId}:${aad.clientId}`,
+    walletAddress: aad.taskHash,
+    chainId: 0,
+    epoch: 1,
+  });
 }
 
 export function decryptCredential(

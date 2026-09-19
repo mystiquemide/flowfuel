@@ -34,3 +34,12 @@ export function workflowTokenFromEnv(): string {
   }
   return token;
 }
+
+export function publicProofRunIds(): Set<string> {
+  return new Set(
+    (process.env.PUBLIC_PROOF_RUN_IDS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}

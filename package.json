@@ -9,7 +9,7 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @flowfuel/web dev",
+    "dev": "pnpm --parallel --filter @flowfuel/web --filter @flowfuel/broker dev",
     "build": "pnpm -r build",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",

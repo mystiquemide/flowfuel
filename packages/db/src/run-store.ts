@@ -2,6 +2,7 @@ import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { isUniqueViolation } from "./client-store";
 import { runs, type RunRow } from "./schema";
+import type { GenerationEvidence } from "@flowfuel/core";
 
 export interface CreateRunInput {
   clientId: string;
@@ -10,6 +11,7 @@ export interface CreateRunInput {
   model: string;
   taskHash: string;
   idempotencyKey: string;
+  activationTxHash?: string | null;
 }
 
 export interface CompleteRunInput {
@@ -22,6 +24,8 @@ export interface CompleteRunInput {
   completionTokens?: number | null;
   errorCode?: string | null;
   upstreamStatus?: number | null;
+  generations?: GenerationEvidence[];
+  resultCiphertext?: string | null;
 }
 
 export function createRunStore(db: Db) {
@@ -43,6 +47,7 @@ export function createRunStore(db: Db) {
             taskHash: input.taskHash,
             idempotencyKey: input.idempotencyKey,
             startedAt: new Date(),
+            activationTxHash: input.activationTxHash ?? null,
           })
           .returning();
         return rows[0]!;
@@ -138,6 +143,8 @@ export function createRunStore(db: Db) {
           completionTokens: input.completionTokens ?? null,
           errorCode: input.errorCode ?? null,
           upstreamStatus: input.upstreamStatus ?? null,
+          generations: input.generations ?? [],
+          resultCiphertext: input.resultCiphertext ?? null,
           completedAt: new Date(),
         })
         .where(and(eq(runs.id, runId), eq(runs.status, "running")))

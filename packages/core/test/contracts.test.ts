@@ -16,7 +16,7 @@ describe("runRequestSchema", () => {
   const valid = {
     clientId: CLIENT_ID,
     workflowRunId: "n8n-exec-246",
-    task: { type: "lead_summary", input: "Summarize this lead." },
+    task: { type: "lead_intelligence", input: "Research this lead at https://example.com." },
     model: "google/gemini-2.5-flash",
     maxOutputTokens: 200,
   };
@@ -135,7 +135,7 @@ describe("verifyWalletRequestSchema", () => {
 });
 
 describe("taskHash", () => {
-  const task = { type: "lead_summary" as const, input: "Summarize this lead." };
+  const task = { type: "lead_intelligence" as const, input: "Research this lead at https://example.com." };
 
   it("is deterministic for the same task", () => {
     expect(taskHash(task)).toBe(taskHash(task));

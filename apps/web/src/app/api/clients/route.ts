@@ -19,6 +19,7 @@ import {
 } from "../../../lib/env";
 import { errorResponse, parseJson } from "../../../lib/http";
 import { liveActivatedBalance } from "../../../lib/live";
+import { agencySessionFromRequest } from "../../../lib/agency-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +37,11 @@ function slugFrom(displayName: string): string {
  * from the Orbio gateway at request time; clients without a credential report
  * a null balance rather than a fabricated number.
  */
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   try {
+    if (!agencySessionFromRequest(request)) {
+      throw new FlowFuelError("UNAUTHORIZED", "Agency authentication required");
+    }
     const { db } = createDb(databaseUrlFromEnv());
     const clients = createClientStore(db);
     const credentials = createCredentialStore(db);
@@ -105,7 +109,7 @@ export async function GET(): Promise<Response> {
  */
 export async function POST(request: Request): Promise<Response> {
   try {
-    if (
+    if (!agencySessionFromRequest(request) &&
       !verifyWorkflowToken(
         bearerToken(request.headers.get("authorization")),
         workflowTokenFromEnv(),

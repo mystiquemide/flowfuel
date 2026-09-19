@@ -91,7 +91,7 @@ export const activationSchema = z.object({
 });
 export type Activation = z.infer<typeof activationSchema>;
 
-export const TASK_TYPES = ["lead_summary"] as const;
+export const TASK_TYPES = ["lead_intelligence"] as const;
 export const taskTypeSchema = z.enum(TASK_TYPES);
 export type TaskType = z.infer<typeof taskTypeSchema>;
 
@@ -104,7 +104,7 @@ export const MAX_TASK_INPUT_CHARS = 8_000;
  * Hard contract bound on run output size. The n8n reference workflow clamps
  * tighter (1024) as the task-level bound; this bound keeps any direct broker
  * call finite while still letting Orbio's own balance pre-authorization
- * reject a request that exceeds the client's allowance (upstream 402).
+ * reject a request that exceeds the client's available balance (upstream 402).
  */
 export const MAX_OUTPUT_TOKENS = 8_192;
 
@@ -113,6 +113,33 @@ export const taskSchema = z.object({
   input: z.string().min(1).max(MAX_TASK_INPUT_CHARS),
 });
 export type Task = z.infer<typeof taskSchema>;
+
+export const leadIntelligenceResultSchema = z.strictObject({
+  summary: z.string().min(1).max(2_000),
+  qualification: z.enum(["high", "medium", "low"]),
+  findings: z.array(z.string().min(1).max(1_000)).max(8),
+  risks: z.array(z.string().min(1).max(1_000)).max(8),
+  recommendedAction: z.string().min(1).max(1_000),
+  confidence: z.number().min(0).max(1),
+  sources: z
+    .array(
+      z.strictObject({
+        title: z.string().min(1).max(300),
+        url: z.url().max(2_000),
+      }),
+    )
+    .max(8),
+});
+export type LeadIntelligenceResult = z.infer<typeof leadIntelligenceResultSchema>;
+
+export const generationEvidenceSchema = z.strictObject({
+  generationId: z.string().min(1).max(128),
+  phase: z.enum(["plan", "analysis"]),
+  costUsd: decimalStringSchema,
+  promptTokens: z.number().int().nonnegative(),
+  completionTokens: z.number().int().nonnegative(),
+});
+export type GenerationEvidence = z.infer<typeof generationEvidenceSchema>;
 
 export const runStatusSchema = z.enum([
   "running",

@@ -7,6 +7,7 @@ import {
 
 import { errorResponse } from "../../../../../lib/http";
 import { runDeps } from "../../../../../lib/services";
+import { publicProofRunIds } from "../../../../../lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,15 +24,15 @@ export async function GET(
   try {
     const { runId } = await params;
     const id = uuidSchema.parse(runId);
+    if (!publicProofRunIds().has(id)) {
+      throw new FlowFuelError("NOT_FOUND", "Public receipt not found");
+    }
     const deps = runDeps();
     const run = await deps.runs.getById(id);
     if (!run) throw new FlowFuelError("NOT_FOUND", "Unknown runId");
     const client = await deps.clients.getById(run.clientId);
     if (!client) throw new FlowFuelError("NOT_FOUND", "Unknown client");
 
-    const activation = await deps.activations
-      .latestForClient(run.clientId)
-      .catch(() => null);
     const source: ReceiptSource = {
       id: run.id,
       clientWallet: client.walletAddress,
@@ -40,6 +41,7 @@ export async function GET(
       model: run.model,
       status: run.status,
       generationId: run.generationId,
+      generations: run.generations,
       balanceBefore: run.balanceBefore,
       costUsd: run.costUsd,
       balanceAfter: run.balanceAfter,
@@ -47,7 +49,7 @@ export async function GET(
       startedAt: run.startedAt.toISOString(),
       completedAt: run.completedAt?.toISOString() ?? null,
     };
-    return Response.json(toPublicReceipt(source, activation?.transactionHash ?? null));
+    return Response.json(toPublicReceipt(source, run.activationTxHash));
   } catch (error) {
     return errorResponse(error);
   }

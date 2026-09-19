@@ -77,7 +77,7 @@ function ProofInner() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const listRes = await fetch("/api/runs?limit=50", { cache: "no-store" });
+      const listRes = await fetch("/api/proof/runs", { cache: "no-store" });
       if (!listRes.ok) throw new Error(await readApiError(listRes));
       const { runs } = (await listRes.json()) as { runs: RunRow[] };
       if (runs.length === 0) throw new Error("No runs recorded yet. Run the n8n workflow to produce the first receipt.");
@@ -131,15 +131,13 @@ function ProofInner() {
       );
 
       const clients: PairData["clients"] = {};
-      await Promise.all(
-        [...new Set(siblings.map((r) => r.clientId))].map(async (id) => {
-          const res = await fetch(`/api/clients/${id}`, { cache: "no-store" });
-          if (res.ok) {
-            const c = (await res.json()) as { displayName: string; walletAddress: string };
-            clients[id] = { displayName: c.displayName, walletAddress: c.walletAddress };
-          }
-        }),
-      );
+      for (const run of siblings) {
+        const receipt = receipts[run.runId];
+        if (receipt) clients[run.clientId] = {
+          displayName: run.clientName ?? "Client",
+          walletAddress: receipt.clientWallet,
+        };
+      }
 
       setPair({ workflowRunId, runs: siblings, receipts, clients });
       setLoadedAt(new Date());

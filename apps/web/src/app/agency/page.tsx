@@ -122,7 +122,7 @@ export default function AgencyPage() {
             parameters: [
               { name: "clientId", value: clientId },
               { name: "workflowRunId", value: "=n8n-{{ $execution.id }}" },
-              { name: "task.type", value: "lead_summary" },
+              { name: "task.type", value: "lead_intelligence" },
               { name: "task.input", value: "={{ $json.taskInput }}" },
               { name: "model", value: "google/gemini-2.5-flash" },
               { name: "maxOutputTokens", value: 1024 },
@@ -148,7 +148,7 @@ Payload:
 {
   "clientId": "<client uuid>",
   "workflowRunId": "n8n-{{ $execution.id }}",
-  "task": { "type": "lead_summary", "input": "{{ $json.taskInput }}" },
+  "task": { "type": "lead_intelligence", "input": "{{ $json.taskInput }}" },
   "model": "google/gemini-2.5-flash",
   "maxOutputTokens": 1024
 }
@@ -832,7 +832,7 @@ Payload:
 {
   "clientId": "<client uuid>",
   "workflowRunId": "n8n-{{ $execution.id }}",
-  "task": { "type": "lead_summary", "input": "{{ $json.taskInput }}" },
+  "task": { "type": "lead_intelligence", "input": "{{ $json.taskInput }}" },
   "model": "google/gemini-2.5-flash",
   "maxOutputTokens": 1024
 }

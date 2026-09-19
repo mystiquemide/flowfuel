@@ -3,6 +3,7 @@ import { explorerTxUrl } from "./constants";
 import { FlowFuelError } from "./errors";
 import {
   decimalStringSchema,
+  generationEvidenceSchema,
   isoTimestampSchema,
   modelSchema,
   runStatusSchema,
@@ -28,12 +29,14 @@ export const publicReceiptSchema = z.strictObject({
   taskHash: sha256HexSchema,
   model: modelSchema,
   generationId: z.string().min(1).max(128).nullable(),
+  generations: z.array(generationEvidenceSchema),
   balanceBefore: decimalStringSchema.nullable(),
   costUsd: decimalStringSchema.nullable(),
   balanceAfter: decimalStringSchema.nullable(),
   upstreamStatus: z.number().int().nullable(),
   activationTxHash: transactionHashSchema.nullable(),
   activationExplorerUrl: z.string().nullable(),
+  activationContext: z.literal("recorded_at_run_start").nullable(),
   startedAt: isoTimestampSchema,
   completedAt: isoTimestampSchema.nullable(),
   source: z.literal("live"),
@@ -48,6 +51,7 @@ export interface ReceiptSource {
   model: string;
   status: string;
   generationId: string | null;
+  generations: unknown;
   balanceBefore: string | null;
   costUsd: string | null;
   balanceAfter: string | null;
@@ -125,6 +129,7 @@ export function toPublicReceipt(
     taskHash: run.taskHash,
     model: run.model,
     generationId: run.generationId,
+    generations: run.generations,
     balanceBefore: run.balanceBefore,
     costUsd: run.costUsd,
     balanceAfter: run.balanceAfter,
@@ -133,6 +138,7 @@ export function toPublicReceipt(
     activationExplorerUrl: activationTxHash
       ? explorerTxUrl(activationTxHash)
       : null,
+    activationContext: activationTxHash ? "recorded_at_run_start" : null,
     startedAt: run.startedAt,
     completedAt: run.completedAt,
     source: "live",

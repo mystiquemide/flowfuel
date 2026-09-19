@@ -10,6 +10,13 @@ import { createClientStore, createDb } from "@flowfuel/db";
 
 import { databaseUrlFromEnv } from "../../lib/env";
 import { runDeps } from "../../lib/services";
+import { cookies } from "next/headers";
+import { AGENCY_COOKIE, assertAgencySession } from "../../lib/agency-auth";
+
+async function requireAgency(): Promise<void> {
+  const token = (await cookies()).get(AGENCY_COOKIE)?.value;
+  assertAgencySession(token);
+}
 
 export interface TestRunResult {
   ok: boolean;
@@ -31,13 +38,14 @@ export interface TestRunResult {
  */
 export async function runClientTest(clientId: string): Promise<TestRunResult> {
   try {
+    await requireAgency();
     const response: RunResponse = await executeRun(runDeps(), {
       clientId,
       workflowRunId: `agency-test-${Date.now()}`,
       task: {
-        type: "lead_summary",
+        type: "lead_intelligence",
         input:
-          "Agency smoke test: summarize this lead and propose the next action.",
+          "Research Orbio at https://www.orbio.so as a prospective infrastructure partner for an AI automation agency.",
       },
       model: "google/gemini-2.5-flash",
       maxOutputTokens: 256,
@@ -95,6 +103,11 @@ export async function createClient(input: {
   displayName: string;
   walletAddress: string;
 }): Promise<CreateClientResult> {
+  try {
+    await requireAgency();
+  } catch {
+    return { ok: false, error: "Agency authentication required" };
+  }
   const parsed = createClientRequestSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "Invalid client name or wallet address" };

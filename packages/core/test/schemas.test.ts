@@ -68,7 +68,7 @@ describe("clientSchema", () => {
 describe("taskSchema", () => {
   it("accepts the allowlisted task", () => {
     const res = taskSchema.safeParse({
-      type: "lead_summary",
+      type: "lead_intelligence",
       input: "Summarize this lead.",
     });
     expect(res.success).toBe(true);
@@ -80,13 +80,13 @@ describe("taskSchema", () => {
   });
 
   it("rejects empty input", () => {
-    const res = taskSchema.safeParse({ type: "lead_summary", input: "" });
+    const res = taskSchema.safeParse({ type: "lead_intelligence", input: "" });
     expect(res.success).toBe(false);
   });
 
   it("rejects input over the bound", () => {
     const res = taskSchema.safeParse({
-      type: "lead_summary",
+      type: "lead_intelligence",
       input: "x".repeat(8_001),
     });
     expect(res.success).toBe(false);
@@ -121,7 +121,7 @@ describe("runSchema", () => {
     id: "9c8b7a6d-2222-4b3c-9d4e-1f2a3b4c5d6e",
     clientId: "3f6a7b2c-1111-4a2b-8c3d-9e4f5a6b7c8d",
     workflowRunId: "n8n-exec-246",
-    taskType: "lead_summary",
+    taskType: "lead_intelligence",
     model: "google/gemini-2.5-flash",
     status: "succeeded",
     generationId: "gen-1789751867",

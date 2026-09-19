@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   decimalStringSchema,
+  generationEvidenceSchema,
   MAX_OUTPUT_TOKENS,
   modelSchema,
   noncePurposeSchema,
@@ -115,6 +116,7 @@ export const runReceiptSummarySchema = z.strictObject({
   costUsd: decimalStringSchema.nullable(),
   balanceBefore: decimalStringSchema.nullable(),
   balanceAfter: decimalStringSchema.nullable(),
+  generations: z.array(generationEvidenceSchema),
 });
 export type RunReceiptSummary = z.infer<typeof runReceiptSummarySchema>;
 

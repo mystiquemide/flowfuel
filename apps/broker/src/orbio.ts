@@ -54,6 +54,15 @@ const keyInfoSchema = z.object({
 const chatMessageSchema = z.object({
   role: z.string(),
   content: z.string().nullable(),
+  tool_calls: z
+    .array(
+      z.object({
+        id: z.string(),
+        type: z.literal("function"),
+        function: z.object({ name: z.string(), arguments: z.string() }),
+      }),
+    )
+    .optional(),
 });
 
 const chatCompletionSchema = z.object({
@@ -77,6 +86,9 @@ const chatCompletionSchema = z.object({
       completion_tokens: z.number().int().nonnegative(),
       total_tokens: z.number().int().nonnegative().optional(),
       cost: z.number().nonnegative(),
+      server_tool_use: z
+        .object({ web_search_requests: z.number().int().nonnegative().optional() })
+        .optional(),
     })
     .loose(),
 });
@@ -98,8 +110,15 @@ export type OrbioKeyInfo = z.infer<typeof keyInfoSchema>;
 export type OrbioChatCompletion = z.infer<typeof chatCompletionSchema>;
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  tool_call_id?: string;
+}
+
+export interface FunctionToolCall {
+  id: string;
+  name: string;
+  arguments: string;
 }
 
 export interface ChatCompletionInput {
@@ -107,6 +126,10 @@ export interface ChatCompletionInput {
   messages: ChatMessage[];
   maxTokens: number;
   temperature?: number;
+  tools?: unknown[];
+  toolChoice?: unknown;
+  responseFormat?: unknown;
+  provider?: unknown;
 }
 
 export interface ChatCompletionResult {
@@ -119,6 +142,8 @@ export interface ChatCompletionResult {
   completionTokens: number;
   costUsd: number;
   balanceAfter: string | null;
+  toolCalls: FunctionToolCall[];
+  webSearchRequests: number;
 }
 
 export interface OrbioClientOptions {
@@ -251,6 +276,10 @@ export function createOrbioClient(options: OrbioClientOptions = {}) {
           messages: input.messages,
           max_tokens: input.maxTokens,
           temperature: input.temperature ?? 0,
+          ...(input.tools ? { tools: input.tools } : {}),
+          ...(input.toolChoice ? { tool_choice: input.toolChoice } : {}),
+          ...(input.responseFormat ? { response_format: input.responseFormat } : {}),
+          ...(input.provider ? { provider: input.provider } : {}),
         }),
       },
       context,
@@ -270,6 +299,12 @@ export function createOrbioClient(options: OrbioClientOptions = {}) {
       completionTokens: body.usage.completion_tokens,
       costUsd: body.usage.cost,
       balanceAfter,
+      toolCalls: (choice?.message?.tool_calls ?? []).map((call) => ({
+        id: call.id,
+        name: call.function.name,
+        arguments: call.function.arguments,
+      })),
+      webSearchRequests: body.usage.server_tool_use?.web_search_requests ?? 0,
     };
   }
 

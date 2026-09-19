@@ -5,7 +5,7 @@
 <h1 align="center">FlowFuel</h1>
 
 <p align="center">
-  <strong>One n8n workflow. Every client pays inference from its own isolated Orbio balance: the funded client runs, the unfunded client stops, and every run ends in a public balance receipt.</strong>
+  <strong>One agent. Many clients. Each client funds their own intelligence through an isolated Orbio balance.</strong>
 </p>
 
 <p align="center">
@@ -22,7 +22,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license" /></a>
 </p>
 
-AI automation agencies today either front every client's model spend and argue about invoices later, or hand everyone one shared provider key and let usage blend into an untraceable bill. FlowFuel is the third option: the agency operates the automation, each client owns the fuel.
+FlowFuel is the operating layer for client-funded AI agents. An automation agency operates one shared Lead Intelligence Agent. Each client owns the wallet, activated Orbio balance, and wallet-derived credential that pays for work performed for that client.
+
+Orbio turns inference into a wallet-funded onchain resource. FlowFuel uses that primitive to separate who operates an AI agent from who pays for its intelligence.
 
 ## 30-second proof
 
@@ -35,12 +37,22 @@ AI automation agencies today either front every client's model spend and argue a
 - Client C self-funded with USDG through the Orbio exchange's `buyAndActivate`, wallet as beneficiary. [Tx](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9)
 - Every number above resolves from the live gateway or the public explorer, not from this README.
 
-## Try it
+## Live product paths
 
-1. Open [/agency](https://flowfuel.midelabs.xyz/agency). Client A shows an activated balance, Client B shows none.
-2. Hit **Test Run** on Client A. It succeeds and draws real inference spend.
-3. Hit **Test Run** on Client B. Same workflow, rejected before inference.
-4. Open [/proof](https://flowfuel.midelabs.xyz/proof) and click any run: task hash, generation ID, upstream status, cost, balance delta, explorer links.
+1. Open [/proof](https://flowfuel.midelabs.xyz/proof) for the public judge experiment and selected public receipts.
+2. The private [/agency](https://flowfuel.midelabs.xyz/agency) workspace requires an operator session before it exposes customer operations or billable controls.
+3. Client onboarding and dashboard links are sent to the corresponding client. Wallet-owned mutations still require EIP-191 signatures.
+
+## The reference agent
+
+The shared n8n workflow invokes one scoped Lead Intelligence Agent for every client:
+
+1. Orbio interprets the lead input and selects the public website to inspect.
+2. FlowFuel executes that constrained tool call with SSRF and response-size controls.
+3. Orbio reasons over the observed site and returns schema-validated JSON with qualification, findings, risks, recommended action, confidence and source URLs.
+4. n8n maps the structured qualification to `route_to_sales` or `manual_review`.
+
+The plan and analysis are separate Orbio generations. FlowFuel stores both generation IDs and costs, aggregates the charge, and reconciles the aggregate against the wallet's balance change. Agent output is encrypted at rest so an idempotent retry returns the original useful result without another inference call.
 
 ## How it works
 
@@ -83,7 +95,7 @@ flowchart LR
 | Client C credited balance | 0.008 direct + 0.122887 + 0.131362 exchange = $0.261849 activated, live in the gateway | [/agency](https://flowfuel.midelabs.xyz/agency) |
 | Contracts | CREDIT, Exchange, USDG on Robinhood Chain | [CREDIT](https://robin.etherscan.io/address/0xe33322da1380e61e5ae5dfb21e7f62924c73004c) · [Exchange](https://robin.etherscan.io/address/0x6951ffd32630b05e06f50062aea801625a58ebc0) · [USDG](https://robin.etherscan.io/address/0x5fc5360d0400a0fd4f2af552add042d716f1d168) |
 | Attack coverage | Replay, spoofed client ID, wrong beneficiary, foreign emitter, reverted receipt, wrong sender, double-charge | `apps/web/test/chain.test.ts`, `apps/web/test/registration.test.ts`, `packages/db/test/stores.test.ts` |
-| Tests | 198 passing across core, db, broker, web | `pnpm -r test` |
+| Tests | Full core, DB, broker and web suites run in CI | `pnpm test` |
 
 ## How this differs
 
@@ -101,7 +113,7 @@ flowchart LR
 - Credentials never enter n8n workflow data, logs, URLs, or public receipts.
 - Every run request is authenticated and tenant-bound by `clientId`; there is no fallback credential path.
 - Public receipts expose an explicit safe-field allowlist only: no prompts, no completions, no credentials.
-- Duplicate executions are idempotent; concurrent requests serialize against the allowance.
+- Duplicate executions return the original encrypted result and receipt; concurrent requests serialize per client.
 - Activation verification is onchain: correct chain, correct contract, real event, beneficiary must equal the client's wallet.
 - Threat model and trust assumptions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -121,13 +133,17 @@ Requirements: Node 24, pnpm, Docker.
 
 ```bash
 pnpm install
-docker compose up -d postgres
+docker compose up -d postgres n8n
 cp .env.example .env.local   # fill in DATABASE_URL, keys, tokens
 pnpm -F @flowfuel/db db:migrate
-pnpm dev                     # web app on :3000, broker on :4010
+pnpm dev                     # web app on :3000 and broker on :4010
 ```
 
-Start n8n with `docker compose up -d n8n`, then import `n8n/workflows/client-funded-agent.json`. Set `FLOWFUEL_BROKER_URL` and `FLOWFUEL_WORKFLOW_TOKEN` in the n8n container environment.
+Import `n8n/workflows/client-funded-agent.json` into n8n. Set `FLOWFUEL_BROKER_URL` and `FLOWFUEL_WORKFLOW_TOKEN` in the n8n container environment. Set `AGENCY_PASSWORD` and an independent random `AGENCY_SESSION_SECRET` before opening the agency workspace.
+
+## Future direction
+
+Policy-based autonomous refueling is the next protocol-native step, not a shipped feature. A client could authorize a weekly maximum or a rule such as refuel $2 when inference balance falls below $0.50. The agent would detect low balance, FlowFuel would evaluate the client policy, an authorized path would acquire and activate CREDIT, and work could resume without unrestricted spending authority.
 
 ## Architecture
 

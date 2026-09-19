@@ -9,7 +9,7 @@ export default function N8nBrokerDocsPage() {
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   const sampleWorkflow = {
-    name: "FlowFuel client-funded agent",
+    name: "FlowFuel client-funded Lead Intelligence Agent",
     nodes: [
       {
         parameters: {
@@ -26,7 +26,7 @@ export default function N8nBrokerDocsPage() {
       {
         parameters: {
           jsCode:
-            "const body = $json.body ?? {};\nconst clientIds = Array.isArray(body.clientIds) && body.clientIds.length > 0\n  ? body.clientIds\n  : [body.clientId];\nconst input = String(body.input).slice(0, 8000);\nconst maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 256, 1), 1024);\nreturn clientIds.map((clientId) => ({\n  json: {\n    clientId,\n    workflowRunId: String($execution.id),\n    task: { type: \"lead_summary\", input },\n    model: \"google/gemini-2.5-flash\",\n    maxOutputTokens,\n  },\n}));",
+            "const body = $json.body ?? {};\nconst clientIds = Array.isArray(body.clientIds) && body.clientIds.length > 0\n  ? body.clientIds\n  : [body.clientId];\nconst input = String(body.input).slice(0, 8000);\nconst maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 700, 1), 1200);\nreturn clientIds.map((clientId) => ({\n  json: {\n    clientId,\n    workflowRunId: String($execution.id),\n    task: { type: \"lead_intelligence\", input },\n    model: \"google/gemini-2.5-flash\",\n    maxOutputTokens,\n  },\n}));",
         },
         name: "Build Run Request",
         type: "n8n-nodes-base.code",
@@ -93,7 +93,7 @@ Body:
 {
   "clientId": "{{ $json.clientId }}",
   "workflowRunId": "{{ $execution.id }}",
-  "task": { "type": "lead_summary", "input": "{{ $json.input }}" },
+  "task": { "type": "lead_intelligence", "input": "Research this company and include its public website URL: {{ $json.input }}" },
   "model": "google/gemini-2.5-flash",
   "maxOutputTokens": 256
 }`;
@@ -305,8 +305,8 @@ Body:
             </h3>
             <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.5, margin: 0 }}>
               FlowFuel acquires an in-memory client lock during inference to prevent parallel branches from
-              exceeding activated balance limits. Retries that reuse the same <code>workflowRunId</code> and
-              client return the cached run receipt instead of billing the client wallet twice, so n8n
+              overlapping balance reads. Retries that reuse the same <code>workflowRunId</code> and
+              client return the original encrypted agent result and receipt instead of billing the client wallet twice, so n8n
               retries are safe by default.
             </p>
           </div>
@@ -323,7 +323,7 @@ Body:
               3. The Strict No-Fallback Invariant
             </h3>
             <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.5, margin: 0 }}>
-              If a client allowance is exhausted or unactivated, FlowFuel stops execution and returns
+              If a client&apos;s activated Orbio balance is exhausted or unavailable, FlowFuel stops execution and returns
               HTTP 422 with status <code>client_unfunded</code> or <code>quota_exceeded</code>. The broker
               will never fall back to an agency master key or another client balance. Paused clients are
               rejected with HTTP 403 before any provider call.

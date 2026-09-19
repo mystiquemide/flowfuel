@@ -4,6 +4,7 @@ import {
 } from "@flowfuel/core";
 import {
   createAuditStore,
+  createActivationStore,
   createClientStore,
   createCredentialStore,
   createDb,
@@ -28,6 +29,7 @@ function buildDeps(): RunDeps {
     credentials: createCredentialStore(db),
     runs: createRunStore(db),
     audit: createAuditStore(db),
+    activations: createActivationStore(db),
     orbio: createOrbioClient({ baseUrl: process.env.ORBIO_BASE_URL }),
     encryptionKey: parseEncryptionKey(env("CREDENTIAL_ENCRYPTION_KEY")),
     chainId: ROBINHOOD_CHAIN_ID,

@@ -118,16 +118,8 @@ function DashboardInner() {
         void loadDetail(clientParam);
         return;
       }
-      void (async () => {
-        try {
-          const res = await fetch("/api/clients", { cache: "no-store" });
-          if (!res.ok) throw new Error(await readApiError(res));
-          const body = (await res.json()) as { clients: ClientListEntry[] };
-          setClients(body.clients);
-        } catch (err) {
-          setLoadError(err instanceof Error ? err.message : "Couldn't load clients. Try again.");
-        }
-      })();
+      setClients([]);
+      setLoadError("Open the client-specific dashboard link sent by your agency.");
     });
   }, [clientParam, loadDetail]);
 
@@ -593,7 +585,7 @@ function DashboardInner() {
                     lineHeight: 1.35,
                   }}
                 >
-                  + Top Up Allowance
+                  + Activate More CREDIT
                 </button>
               </div>
 
@@ -633,7 +625,7 @@ function DashboardInner() {
                 }}
               >
                 <div style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: "var(--ink-muted)" }}>
-                  ALLOWANCE STATUS
+                  ORBIO BALANCE STATUS
                 </div>
                 <div
                   style={{
@@ -728,7 +720,7 @@ function DashboardInner() {
                 }}
               >
                 <h3 style={{ margin: "0 0 6px", fontSize: "0.9375rem", fontWeight: 550, color: "var(--ink)" }}>
-                  Top Up Allowance
+                  Activate More CREDIT
                 </h3>
                 <p style={{ margin: "0 0 12px", fontSize: "0.8125rem", color: "var(--ink-muted)", lineHeight: 1.5 }}>
                   Sends activate(amount) to CREDIT contract {truncateMiddle("0xe33322da1380e61e5ae5dfb21e7f62924c73004c", 10, 6)} from your wallet. The activated amount becomes spendable inference credit.

@@ -79,7 +79,7 @@ function makeOrbio(overrides: Partial<{
           },
         };
       },
-      createChatCompletion: async (credential: string) => {
+      createChatCompletion: async (credential: string, input) => {
         spy.completionCredentials.push(credential);
         spy.completions += 1;
         if (overrides.completionError) throw overrides.completionError;
@@ -88,11 +88,25 @@ function makeOrbio(overrides: Partial<{
           generationId: `gen-test-${spy.completions}`,
           model: "google/gemini-2.5-flash",
           provider: "google",
-          content: "LEAD_SUMMARY_RESULT",
+          content: input.tools
+            ? null
+            : JSON.stringify({
+                summary: "Qualified lead",
+                qualification: "high",
+                findings: ["Clear automation need"],
+                risks: [],
+                recommendedAction: "Book discovery call",
+                confidence: 0.9,
+                sources: [{ title: "ACME", url: "https://example.com/" }],
+              }),
           promptTokens: 42,
           completionTokens: 17,
-          costUsd: 0.000026,
+          costUsd: 0.000013,
           balanceAfter: null,
+          toolCalls: input.tools
+            ? [{ id: "tool-1", name: "inspect_public_website", arguments: '{"url":"https://example.com"}' }]
+            : [],
+          webSearchRequests: 0,
         };
       },
     },
@@ -109,6 +123,7 @@ function deps(orbio: OrbioClient): RunDeps {
     orbio,
     encryptionKey,
     chainId: ROBINHOOD_CHAIN_ID,
+    inspectWebsite: async () => ({ url: "https://example.com/", title: "Example", text: "Example company" }),
   };
 }
 
@@ -147,7 +162,7 @@ function runRequest(client: ClientRow, workflowRunId: string): RunRequest {
   return {
     clientId: client.id,
     workflowRunId,
-    task: { type: "lead_summary", input: "Summarize ACME lead" },
+    task: { type: "lead_intelligence", input: "Research ACME at https://example.com" },
     model: "google/gemini-2.5-flash",
     maxOutputTokens: 128,
   };
@@ -177,9 +192,9 @@ describe("executeRun", () => {
 
     expect(res.status).toBe("succeeded");
     if (res.status !== "succeeded") return;
-    expect(res.result).toBe("LEAD_SUMMARY_RESULT");
+    expect(JSON.parse(res.result).qualification).toBe("high");
     expect(res.receipt.clientWallet).toBe(clientA.walletAddress);
-    expect(res.receipt.generationId).toBe("gen-test-1");
+    expect(res.receipt.generationId).toBe("gen-test-2");
     expect(res.receipt.balanceBefore).toBe("0.009726");
     expect(res.receipt.balanceAfter).toBe("0.009700");
     expect(res.receipt.costUsd).toBe("0.000026");
@@ -224,7 +239,10 @@ describe("executeRun", () => {
     const first = await executeRun(d, runRequest(clientA, "exec-dup"));
     const second = await executeRun(d, runRequest(clientA, "exec-dup"));
 
-    expect(orbio.completions).toBe(1);
+    expect(orbio.completions).toBe(2);
+    expect(second.status === "succeeded" && second.result).toBe(
+      first.status === "succeeded" ? first.result : "",
+    );
     expect(second.runId).toBe(first.runId);
     expect(second.status).toBe("succeeded");
   });
@@ -241,7 +259,7 @@ describe("executeRun", () => {
       executeRun(d, runRequest(clientA, "exec-par")),
     ]);
 
-    expect(orbio.completions).toBe(1);
+    expect(orbio.completions).toBe(2);
     expect(new Set([r1.runId, r2.runId, r3.runId]).size).toBe(1);
     const rows = await runStore.listByClient(clientA.id);
     expect(rows).toHaveLength(1);
@@ -272,7 +290,7 @@ describe("executeRun", () => {
     ]);
 
     expect(maxConcurrent).toBe(1);
-    expect(orbio.completions).toBe(2);
+    expect(orbio.completions).toBe(4);
   });
 
   it("marks quota errors terminal with no charge recorded", async () => {
@@ -324,7 +342,7 @@ describe("executeRun", () => {
       executeRun(deps(orbio.client), {
         clientId: "3f6a7b2c-1111-4a2b-8c3d-9e4f5a6b7c8d",
         workflowRunId: "exec-x",
-        task: { type: "lead_summary", input: "x" },
+        task: { type: "lead_intelligence", input: "x" },
         model: "google/gemini-2.5-flash",
         maxOutputTokens: 64,
       }),
@@ -347,7 +365,7 @@ describe("executeRun", () => {
     const row = await runStore.getById(res.runId);
     expect(row?.status).toBe("reconciliation_failed");
     // The charge evidence is preserved for investigation.
-    expect(row?.generationId).toBe("gen-test-1");
+    expect(row?.generationId).toBe("gen-test-2");
     expect(row?.costUsd).toBe("0.000026");
   });
 
@@ -382,6 +400,7 @@ describe("executeRun", () => {
       model: row!.model,
       status: row!.status,
       generationId: row!.generationId,
+      generations: row!.generations,
       balanceBefore: row!.balanceBefore,
       costUsd: row!.costUsd,
       balanceAfter: row!.balanceAfter,
@@ -406,7 +425,7 @@ describe("executeRun", () => {
     expect(events).toHaveLength(1);
     expect(events[0]!.event_type).toBe("run_succeeded");
     const data = events[0]!.public_data as Record<string, unknown>;
-    expect(data.generationId).toBe("gen-test-1");
+    expect(data.generationId).toBe("gen-test-2");
     expect(JSON.stringify(data)).not.toContain(CLIENT_A_SECRET);
   });
 });

@@ -115,12 +115,34 @@ describe("credential store isolation", () => {
 });
 
 describe("run store", () => {
+  it("keeps the activation context captured when the run was created", async () => {
+    const c = await makeClient("activation-context", WALLET_A);
+    const txA = `0x${"a".repeat(64)}`;
+    const txB = `0x${"b".repeat(64)}`;
+    const run = await runStore.create({
+      clientId: c.id,
+      workflowRunId: "activation-stability",
+      taskType: "lead_intelligence",
+      model: "google/gemini-2.5-flash",
+      taskHash: "a".repeat(64),
+      idempotencyKey: "activation-stability".padEnd(64, "0"),
+      activationTxHash: txA,
+    });
+    await db.insert((await import("../src/schema")).activations).values({
+      clientId: c.id,
+      transactionHash: txB,
+      amountUsd: "1.000000",
+      status: "confirmed",
+    });
+    expect((await runStore.getById(run.id))?.activationTxHash).toBe(txA);
+  });
+
   it("is idempotent on the workflow execution key", async () => {
     const c = await makeClient("acme-labs", WALLET_A);
     const input = {
       clientId: c.id,
       workflowRunId: "exec-246",
-      taskType: "lead_summary",
+      taskType: "lead_intelligence",
       model: "google/gemini-2.5-flash",
       taskHash: "a".repeat(64),
       idempotencyKey: "k".repeat(64),
@@ -137,7 +159,7 @@ describe("run store", () => {
     const run = await runStore.create({
       clientId: c.id,
       workflowRunId: "exec-246",
-      taskType: "lead_summary",
+      taskType: "lead_intelligence",
       model: "google/gemini-2.5-flash",
       taskHash: "a".repeat(64),
       idempotencyKey: "k".repeat(64),
@@ -169,7 +191,7 @@ describe("run store", () => {
       runStore.create({
         clientId: c.id,
         workflowRunId: `exec-${key}`,
-        taskType: "lead_summary",
+        taskType: "lead_intelligence",
         model: "google/gemini-2.5-flash",
         taskHash: "a".repeat(64),
         idempotencyKey: key.padEnd(64, "0"),

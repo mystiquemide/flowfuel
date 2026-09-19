@@ -70,19 +70,6 @@ function OnboardInner() {
   const [maxFills, setMaxFills] = useState<bigint | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
 
-  const loadClients = useCallback(async () => {
-    try {
-      const res = await fetch("/api/clients", { cache: "no-store" });
-      if (!res.ok) throw new Error(await readApiError(res));
-      const body = (await res.json()) as { clients: ClientListEntry[] };
-      setClients(body.clients);
-      return body.clients;
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load clients");
-      return null;
-    }
-  }, []);
-
   const loadDetail = useCallback(async (idOrSlug: string) => {
     try {
       const res = await fetch(`/api/clients/${idOrSlug}`, { cache: "no-store" });
@@ -102,10 +89,11 @@ function OnboardInner() {
       if (clientParam) {
         void loadDetail(clientParam);
       } else {
-        void loadClients();
+        setClients([]);
+        setLoadError("Open the client-specific funding link sent by your agency.");
       }
     });
-  }, [clientParam, loadClients, loadDetail]);
+  }, [clientParam, loadDetail]);
 
   async function pickClient(id: string) {
     setDetail(null);
@@ -375,10 +363,10 @@ function OnboardInner() {
               lineHeight: 1.25,
             }}
           >
-            Set Your AI Allowance
+            Fund Your Orbio Inference Balance
           </h1>
           <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.5, margin: 0, maxWidth: 680 }}>
-            Choose how much of your CREDIT balance this agency can use for AI inference. The agency can only spend from the amount you activate.
+            Activate CREDIT into your wallet&apos;s Orbio balance. FlowFuel routes this client&apos;s agent runs to that balance, but does not impose a separate spending cap.
           </p>
         </div>
 
@@ -394,7 +382,7 @@ function OnboardInner() {
             }}
           >
             <h2 style={{ margin: "0 0 10px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
-              Select a client
+              Open your client funding link
             </h2>
             {loadError && (
               <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--danger)" }}>{loadError}</p>
@@ -584,10 +572,10 @@ function OnboardInner() {
                 STEP 02
               </div>
               <h2 style={{ margin: "0 0 3px", fontSize: "1.0625rem", fontWeight: 550, color: "var(--ink)" }}>
-                Choose Your Allowance
+                Choose an Activation Amount
               </h2>
               <p style={{ fontSize: "0.875rem", color: "var(--ink-muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
-                Choose the amount of CREDIT this agency can use for your AI automation.
+                Choose how much CREDIT to convert into spendable Orbio inference balance. Activation is wallet-wide, not a FlowFuel-only ceiling.
               </p>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 8 }}>
@@ -688,7 +676,7 @@ function OnboardInner() {
                   }}
                 >
                   <div style={{ color: "var(--success)", fontWeight: 600, fontSize: "0.875rem", marginBottom: 6 }}>
-                    ALLOWANCE ACTIVATED ON CHAIN
+                    ORBIO BALANCE ACTIVATED ON CHAIN
                   </div>
                   <a
                     href={explorerTxUrl(phase.txHash)}

@@ -55,7 +55,7 @@ Responsibilities:
 - Call the Orbio gateway.
 - Read the balance after inference.
 - Normalize gateway errors without hiding upstream evidence.
-- Write an immutable run receipt.
+- Write a terminal run record that application code cannot rewrite after completion.
 
 The broker is the only component allowed to decrypt an Orbio credential.
 It never retries under a different credential. Funding failure is terminal for that run.
@@ -75,7 +75,7 @@ Requirements:
 
 ### 3.4 n8n workflow
 
-The workflow contains one FlowFuel HTTP request, not one Orbio credential per client.
+The workflow contains one FlowFuel HTTP request, not one Orbio credential per client. The reference workload is a scoped Lead Intelligence Agent: Orbio plans a constrained website-inspection tool call, FlowFuel executes the observation, and Orbio returns schema-validated qualification data in a second generation.
 
 Input contract:
 
@@ -83,7 +83,7 @@ Input contract:
 {
   "clientId": "client_a",
   "task": {
-    "type": "lead_summary",
+    "type": "lead_intelligence",
     "input": "Summarize this qualified lead and propose the next action."
   }
 }
@@ -307,7 +307,7 @@ Authenticated n8n request:
   "clientId": "uuid",
   "workflowRunId": "n8n-execution-id",
   "task": {
-    "type": "lead_summary",
+    "type": "lead_intelligence",
     "input": "bounded task input"
   },
   "model": "google/gemini-2.5-flash",
@@ -429,7 +429,7 @@ The judge-facing proof is accepted only if it contains:
 - Client A successful generation ID and cost.
 - Client A before and after activated balances.
 - Client B upstream 401 and normalized unfunded state.
-- Client A upstream 402 for a request above remaining allowance.
+- Client A upstream 402 for a request above its remaining activated balance.
 - No successful generation ID for either failed request.
 
 ## 11. Architecture decisions

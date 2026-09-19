@@ -248,7 +248,7 @@ export default function Home() {
                 fontWeight: 600,
               }}
             >
-              CLIENT-FUNDED INFERENCE FOR N8N
+              CLIENT-FUNDED AUTONOMOUS AGENTS
             </span>
           </div>
 
@@ -263,13 +263,13 @@ export default function Home() {
             }}
           >
             <span className="animate-hero-title-main" style={{ display: "inline-block" }}>
-              One n8n workflow.
+              One agent.
               <br />
-              Multiple paying clients.
+              Many clients.
             </span>
             <br />
             <span className="animate-hero-title-accent" style={{ color: "var(--fuel)", display: "inline-block" }}>
-              Zero shared API balance.
+              Each funds their own intelligence.
             </span>
           </h1>
 
@@ -284,7 +284,7 @@ export default function Home() {
               fontWeight: 400,
             }}
           >
-            Run one n8n workflow across multiple clients while each client funds their own AI inference. No shared provider balance, no fronting model costs, and no monthly usage reconciliation.
+            FlowFuel lets automation agencies operate one shared Lead Intelligence Agent while every client pays inference from their own Orbio balance.
           </p>
 
           <div
@@ -717,7 +717,7 @@ export default function Home() {
                     gap: 6,
                   }}
                 >
-                  View Cryptographic Receipt &rarr;
+                  View Reconciled Run Receipt &rarr;
                 </Link>
               </div>
             </div>
@@ -918,11 +918,11 @@ export default function Home() {
                 Stop Fronting AI Costs
               </h3>
               <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.55, margin: 0 }}>
-                Each client funds their own inference allowance. Your agency no longer has to absorb model usage, estimate monthly costs, or chase reimbursements.
+                Each client funds their own activated Orbio balance. Your agency no longer has to absorb model usage, estimate monthly costs, or chase reimbursements.
               </p>
             </div>
             <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid var(--border)", fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--ink-subtle)" }}>
-              Robinhood Chain CREDIT allowance prevents agency financial exposure
+              Robinhood Chain CREDIT becomes wallet-specific inference balance
             </div>
           </div>
 
@@ -955,7 +955,7 @@ export default function Home() {
                 One Workflow Across Every Client
               </h3>
               <p style={{ color: "var(--ink-muted)", fontSize: "0.9375rem", lineHeight: 1.55, margin: 0 }}>
-                Keep one n8n workflow and route every run through the correct client balance. No separate provider projects, duplicated workflows, or client API keys.
+                Keep one n8n agent workflow and route every run through the correct client balance. n8n never receives the client&apos;s wallet-derived Orbio credential.
               </p>
             </div>
             <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid var(--border)", fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--ink-subtle)" }}>
@@ -996,7 +996,7 @@ export default function Home() {
               </p>
             </div>
             <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid var(--border)", fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--ink-subtle)" }}>
-              Non-custodial EIP-712 signing with cryptographic run receipts
+              EIP-191 wallet signing with public, reconciled run receipts
             </div>
           </div>
         </div>
