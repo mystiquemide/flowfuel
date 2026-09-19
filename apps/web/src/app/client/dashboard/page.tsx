@@ -511,7 +511,7 @@ function DashboardInner() {
           </div>
         )}
 
-        {clientParam && !detail && !loadError && (
+        {clientParam && !detail && !bootstrap && !loadError && (
           <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>Loading client…</p>
         )}
         {loadError && (
