@@ -124,7 +124,7 @@ export default function AgencyPage() {
               { name: "workflowRunId", value: "=n8n-{{ $execution.id }}" },
               { name: "task.type", value: "lead_intelligence" },
               { name: "task.input", value: "={{ $json.taskInput }}" },
-              { name: "model", value: "google/gemini-2.5-flash" },
+              { name: "model", value: "mistralai/mistral-nemo" },
               { name: "maxOutputTokens", value: 1024 },
             ],
           },
@@ -149,7 +149,7 @@ Payload:
   "clientId": "<client uuid>",
   "workflowRunId": "n8n-{{ $execution.id }}",
   "task": { "type": "lead_intelligence", "input": "{{ $json.taskInput }}" },
-  "model": "google/gemini-2.5-flash",
+  "model": "mistralai/mistral-nemo",
   "maxOutputTokens": 1024
 }
 
@@ -833,7 +833,7 @@ Payload:
   "clientId": "<client uuid>",
   "workflowRunId": "n8n-{{ $execution.id }}",
   "task": { "type": "lead_intelligence", "input": "{{ $json.taskInput }}" },
-  "model": "google/gemini-2.5-flash",
+  "model": "mistralai/mistral-nemo",
   "maxOutputTokens": 1024
 }
 

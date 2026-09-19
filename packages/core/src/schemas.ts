@@ -95,7 +95,10 @@ export const TASK_TYPES = ["lead_intelligence"] as const;
 export const taskTypeSchema = z.enum(TASK_TYPES);
 export type TaskType = z.infer<typeof taskTypeSchema>;
 
-export const MODEL_ALLOWLIST = ["google/gemini-2.5-flash"] as const;
+export const MODEL_ALLOWLIST = [
+  "mistralai/mistral-nemo",
+  "google/gemini-2.5-flash",
+] as const;
 export const modelSchema = z.enum(MODEL_ALLOWLIST);
 export type AllowedModel = z.infer<typeof modelSchema>;
 

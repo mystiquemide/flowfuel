@@ -47,7 +47,7 @@ export async function runClientTest(clientId: string): Promise<TestRunResult> {
         input:
           "Research Orbio at https://www.orbio.so as a prospective infrastructure partner for an AI automation agency.",
       },
-      model: "google/gemini-2.5-flash",
+      model: "mistralai/mistral-nemo",
       maxOutputTokens: 256,
     });
     if (response.status === "succeeded") {

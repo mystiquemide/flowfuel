@@ -26,7 +26,7 @@ export default function N8nBrokerDocsPage() {
       {
         parameters: {
           jsCode:
-            "const body = $json.body ?? {};\nconst clientIds = Array.isArray(body.clientIds) && body.clientIds.length > 0\n  ? body.clientIds\n  : [body.clientId];\nconst input = String(body.input).slice(0, 8000);\nconst maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 320, 1), 500);\nreturn clientIds.map((clientId) => ({\n  json: {\n    clientId,\n    workflowRunId: String($execution.id),\n    task: { type: \"lead_intelligence\", input },\n    model: \"google/gemini-2.5-flash\",\n    maxOutputTokens,\n  },\n}));",
+            "const body = $json.body ?? {};\nconst clientIds = Array.isArray(body.clientIds) && body.clientIds.length > 0\n  ? body.clientIds\n  : [body.clientId];\nconst input = String(body.input).slice(0, 8000);\nconst maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 320, 1), 500);\nreturn clientIds.map((clientId) => ({\n  json: {\n    clientId,\n    workflowRunId: String($execution.id),\n    task: { type: \"lead_intelligence\", input },\n    model: \"mistralai/mistral-nemo\",\n    maxOutputTokens,\n  },\n}));",
         },
         name: "Build Run Request",
         type: "n8n-nodes-base.code",
@@ -94,7 +94,7 @@ Body:
   "clientId": "{{ $json.clientId }}",
   "workflowRunId": "{{ $execution.id }}",
   "task": { "type": "lead_intelligence", "input": "Research this company and include its public website URL: {{ $json.input }}" },
-  "model": "google/gemini-2.5-flash",
+  "model": "mistralai/mistral-nemo",
   "maxOutputTokens": 256
 }`;
 

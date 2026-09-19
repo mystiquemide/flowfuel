@@ -310,7 +310,7 @@ Authenticated n8n request:
     "type": "lead_intelligence",
     "input": "bounded task input"
   },
-  "model": "google/gemini-2.5-flash",
+  "model": "mistralai/mistral-nemo",
   "maxOutputTokens": 200
 }
 ```
@@ -325,7 +325,7 @@ Successful response:
   "receipt": {
     "clientWallet": "0x...",
     "generationId": "gen-...",
-    "model": "google/gemini-2.5-flash",
+    "model": "mistralai/mistral-nemo",
     "costUsd": "0.000026",
     "balanceBefore": "0.010000",
     "balanceAfter": "0.009974"
