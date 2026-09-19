@@ -149,6 +149,7 @@ export type GenerationEvidence = z.infer<typeof generationEvidenceSchema>;
 export const runStatusSchema = z.enum([
   "running",
   "succeeded",
+  "refuel_pending",
   "client_unfunded",
   "quota_exceeded",
   "provider_failed",
@@ -197,6 +198,7 @@ export const AUDIT_EVENT_TYPES = [
   "client_resumed",
   "activation_recorded",
   "run_succeeded",
+  "run_refuel_pending",
   "run_unfunded",
   "run_quota_exceeded",
   "run_provider_failed",

@@ -3,3 +3,5 @@ export * from "./auth";
 export * from "./run-client-task";
 export * from "./rate-limit";
 export * from "./http-server";
+export * from "./refuel";
+export * from "./refuel-vault";

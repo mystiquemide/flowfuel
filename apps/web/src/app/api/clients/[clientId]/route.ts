@@ -1,6 +1,7 @@
 import { createOrbioClient } from "@flowfuel/broker";
 import {
   FlowFuelError,
+  unitsToDecimal,
   updateClientStatusRequestSchema,
   uuidSchema,
 } from "@flowfuel/core";
@@ -10,15 +11,19 @@ import {
   createCredentialStore,
   createDb,
   createRunStore,
+  createRefuelExecutionStore,
+  createRefuelPolicyStore,
 } from "@flowfuel/db";
 
 import {
   credentialEncryptionKey,
   databaseUrlFromEnv,
   orbioBaseUrlFromEnv,
+  refuelExecutorAddressFromEnv,
+  refuelVaultAddressFromEnv,
 } from "../../../../lib/env";
 import { errorResponse, parseJson } from "../../../../lib/http";
-import { creditBalanceOf, usdgBalanceOf } from "../../../../lib/chain";
+import { creditBalanceOf, refuelVaultState, usdgBalanceOf } from "../../../../lib/chain";
 import { liveActivatedBalance } from "../../../../lib/live";
 import { updateClientStatus } from "../../../../lib/registration";
 import { registrationDeps } from "../../../../lib/services";
@@ -62,9 +67,12 @@ export async function GET(
     const credentials = createCredentialStore(db);
     const runs = createRunStore(db);
     const activations = createActivationStore(db);
+    const refuelPolicies = createRefuelPolicyStore(db);
+    const refuelExecutions = createRefuelExecutionStore(db);
     const credential = await credentials.getForClient(client.id);
+    const vaultAddress = refuelVaultAddressFromEnv();
 
-    const [balance, transferable, usdg, totalSpent, activation, recent] =
+    const [balance, transferable, usdg, totalSpent, activation, recent, refuelPolicy, activeRefuel, vaultState] =
       await Promise.all([
         liveActivatedBalance({
           orbio: createOrbioClient({ baseUrl: orbioBaseUrlFromEnv() }),
@@ -77,6 +85,11 @@ export async function GET(
         runs.sumChargedCost(client.id),
         activations.latestForClient(client.id),
         runs.listByClient(client.id, 20),
+        refuelPolicies.getForClient(client.id),
+        refuelExecutions.getActiveForClient(client.id),
+        vaultAddress
+          ? refuelVaultState(vaultAddress, client.walletAddress).catch(() => null)
+          : Promise.resolve(null),
       ]);
 
     return Response.json({
@@ -114,6 +127,32 @@ export async function GET(
         startedAt: run.startedAt.toISOString(),
         completedAt: run.completedAt?.toISOString() ?? null,
       })),
+      autoRefuel: vaultAddress
+        ? {
+            vaultAddress,
+            enabled: vaultState?.policy.enabled ?? refuelPolicy?.enabled ?? false,
+            thresholdUsd: refuelPolicy?.thresholdUsd ?? "0.500000",
+            refillAmountUsdg:
+              vaultState ? unitsToDecimal(vaultState.policy.refillAmount) : refuelPolicy?.refillAmountUsdg ?? "1.000000",
+            weeklyCapUsdg:
+              vaultState ? unitsToDecimal(vaultState.policy.weeklyCap) : refuelPolicy?.weeklyCapUsdg ?? "3.000000",
+            executorAddress:
+              vaultState?.policy.executor ?? refuelPolicy?.executorAddress ?? refuelExecutorAddressFromEnv(),
+            maxSlippageBps:
+              vaultState?.policy.maxSlippageBps ?? refuelPolicy?.maxSlippageBps ?? 200,
+            reserveUsdg: vaultState ? unitsToDecimal(vaultState.reserve) : "0.000000",
+            weeklySpentUsdg: vaultState ? unitsToDecimal(vaultState.weekSpent) : "0.000000",
+            weekEpoch: vaultState?.weekEpoch.toString() ?? null,
+            activeRefuel: activeRefuel
+              ? {
+                  id: activeRefuel.id,
+                  status: activeRefuel.status,
+                  transactionHash: activeRefuel.transactionHash,
+                  startedAt: activeRefuel.startedAt.toISOString(),
+                }
+              : null,
+          }
+        : null,
     });
   } catch (err) {
     return errorResponse(err);

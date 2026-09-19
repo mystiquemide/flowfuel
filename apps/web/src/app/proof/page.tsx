@@ -52,6 +52,14 @@ interface PublicReceipt {
   startedAt: string;
   completedAt: string | null;
   source: "recorded_live_execution";
+  refuel: {
+    transactionHash: string;
+    beneficiary: string;
+    usdgSpent: string;
+    creditOut: string;
+    activationId: string;
+    status: string;
+  } | null;
 }
 
 interface PairData {
@@ -63,6 +71,7 @@ interface PairData {
 
 const RUN_STATUS_LABEL: Record<string, string> = {
   succeeded: "succeeded",
+  refuel_pending: "refuel_pending",
   client_unfunded: "client_unfunded",
   quota_exceeded: "quota_exceeded",
   provider_failed: "provider_failed",
@@ -608,6 +617,21 @@ function ProofInner() {
                           )}
                         </td>
                       ))}
+                    </tr>
+                    <tr style={{ borderTop: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontWeight: 550, color: "var(--ink)" }}>
+                        Refuel evidence
+                      </td>
+                      {orderedRuns.map((run) => {
+                        const refuel = pair.receipts[run.runId]?.refuel;
+                        return (
+                          <td key={run.runId} style={{ padding: "12px 16px", color: refuel ? "var(--success)" : "var(--ink-muted)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                            {refuel
+                              ? `${refuel.usdgSpent} USDG -> ${refuel.creditOut} CREDIT · ${refuel.status}`
+                              : "none"}
+                          </td>
+                        );
+                      })}
                     </tr>
                   </tbody>
                 </table>

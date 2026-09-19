@@ -1,12 +1,14 @@
 import {
   FlowFuelError,
   decryptRunResult,
+  decimalToUnits,
   encryptRunResult,
   generationEvidenceSchema,
   idempotencyKey,
   leadIntelligenceResultSchema,
   reconcileBalances,
   taskHash,
+  toMicroUsd,
   withDecryptedCredential,
   type AllowedModel,
   type AuditEventType,
@@ -21,6 +23,7 @@ import type {
   createClientStore,
   createCredentialStore,
   createRunStore,
+  createRefuelExecutionStore,
   ClientRow,
   CompleteRunInput,
   RunRow,
@@ -29,6 +32,7 @@ import type {
 import type { OrbioClient } from "./orbio";
 import { createRateLimiter, RUN_RATE_LIMIT, type RateLimiter } from "./rate-limit";
 import { inspectPublicWebsite } from "./website-tool";
+import type { RefuelCoordinator, RefuelOutcome } from "./refuel";
 
 export interface RunDeps {
   clients: Pick<ReturnType<typeof createClientStore>, "getById">;
@@ -39,12 +43,16 @@ export interface RunDeps {
   >;
   audit: Pick<ReturnType<typeof createAuditStore>, "append">;
   activations?: { latestForClient(clientId: string): Promise<{ transactionHash: string } | null> };
+  refuels?: Pick<ReturnType<typeof createRefuelExecutionStore>, "getByRunId">;
   orbio: OrbioClient;
   encryptionKey: Buffer;
   chainId: number;
   rateLimiter?: RateLimiter;
   inspectWebsite?: typeof inspectPublicWebsite;
   settleDelay?: (ms: number) => Promise<void>;
+  refuel?: RefuelCoordinator;
+  refuelIndexAttempts?: number;
+  refuelIndexDelayMs?: number;
 }
 
 const TASK_PROMPTS: Record<RunRequest["task"]["type"], string> = {
@@ -119,10 +127,14 @@ const ERROR_STATUS: Record<string, Exclude<RunStatus, "running">> = {
   CLIENT_UNFUNDED: "client_unfunded",
   QUOTA_EXCEEDED: "quota_exceeded",
   VALIDATION_FAILED: "validation_failed",
+  REFUEL_PENDING: "refuel_pending",
+  REFUEL_POLICY_BLOCKED: "quota_exceeded",
+  REFUEL_FAILED: "quota_exceeded",
 };
 
 const STATUS_AUDIT: Record<Exclude<RunStatus, "running">, AuditEventType> = {
   succeeded: "run_succeeded",
+  refuel_pending: "run_refuel_pending",
   client_unfunded: "run_unfunded",
   quota_exceeded: "run_quota_exceeded",
   provider_failed: "run_provider_failed",
@@ -150,6 +162,28 @@ function addCosts(left: string, right: string): string {
   const whole = total / scale;
   const fraction = (total % scale).toString().padStart(COST_SCALE, "0");
   return `${whole}.${fraction}`;
+}
+
+function balanceUnits(value: string): bigint | null {
+  try {
+    return decimalToUnits(value);
+  } catch {
+    return null;
+  }
+}
+
+function reconcileWithIncomingRefuel(
+  balanceBefore: string,
+  balanceAfter: string,
+  costUsd: string,
+  creditOut: string,
+): boolean {
+  return Math.abs(
+    toMicroUsd(balanceBefore) +
+      toMicroUsd(creditOut) -
+      toMicroUsd(balanceAfter) -
+      toMicroUsd(costUsd),
+  ) <= 4;
 }
 
 function receiptFromRun(run: RunRow, client: ClientRow): RunReceiptSummary {
@@ -323,6 +357,8 @@ async function executeLocked(
   const verified = credential.verifiedAt != null;
   let balanceBeforeSeen: string | null = null;
   let balanceAfterSeen: string | null = null;
+  let refuelOutcome: RefuelOutcome | null = null;
+  let refuelIndexedBeforeRun = false;
   const generationEvidenceSeen: Array<{
     generationId: string;
     phase: "plan" | "analysis";
@@ -348,6 +384,44 @@ async function executeLocked(
         const context = { credentialPreviouslyVerified: verified };
         const before = await deps.orbio.getKeyInfo(plaintext, context);
         balanceBeforeSeen = before.balance.available;
+        let balanceBeforeForRun = before.balance.available;
+        if (deps.refuel) {
+          refuelOutcome = await deps.refuel.prepare({
+            clientId: client.id,
+            clientWallet: client.walletAddress,
+            runId: run.id,
+            workflowRunId: request.workflowRunId,
+            triggerBalance: before.balance.available,
+          });
+          if (refuelOutcome.kind === "indexing" && refuelOutcome.transactionHash) {
+            const attempts = deps.refuelIndexAttempts ?? 12;
+            for (let attempt = 0; attempt < attempts; attempt += 1) {
+              const indexed = await deps.orbio.getKeyInfo(plaintext, context);
+              const beforeUnits = balanceUnits(before.balance.available);
+              const indexedUnits = balanceUnits(indexed.balance.available);
+              if (
+                beforeUnits !== null &&
+                indexedUnits !== null &&
+                indexedUnits > beforeUnits
+              ) {
+                balanceBeforeForRun = indexed.balance.available;
+                balanceBeforeSeen = balanceBeforeForRun;
+                refuelIndexedBeforeRun = true;
+                await deps.refuel.markIndexed(refuelOutcome.executionId);
+                break;
+              }
+              if (attempt < attempts - 1) {
+                await (deps.settleDelay ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(
+                  deps.refuelIndexDelayMs ?? 1_000,
+                );
+              }
+            }
+          }
+        }
+        const beforeForRun = {
+          ...before,
+          balance: { ...before.balance, available: balanceBeforeForRun },
+        };
         const plan = await deps.orbio.createChatCompletion(
           plaintext,
           {
@@ -428,7 +502,18 @@ async function executeLocked(
             const after = await deps.orbio.getKeyInfo(plaintext, context);
             balanceAfter = after.balance.available;
             balanceAfterSeen = balanceAfter;
-            if (reconcileBalances(before.balance.available, balanceAfter, totalCostSeen)) break;
+            if (
+              reconcileBalances(beforeForRun.balance.available, balanceAfter, totalCostSeen) ||
+              (!refuelIndexedBeforeRun &&
+                refuelOutcome?.kind === "indexing" &&
+                refuelOutcome.creditOut !== null &&
+                reconcileWithIncomingRefuel(
+                  before.balance.available,
+                  balanceAfter,
+                  totalCostSeen,
+                  refuelOutcome.creditOut,
+                ))
+            ) break;
             if (attempt < 11) {
               await (deps.settleDelay ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(1_000);
             }
@@ -442,7 +527,29 @@ async function executeLocked(
               ? error
               : new FlowFuelError("PROVIDER_FAILED", "Balance re-read failed");
         }
-        return { before, completion, balanceAfter, afterReadError, result };
+        if (
+          !refuelIndexedBeforeRun &&
+          refuelOutcome?.kind === "indexing" &&
+          refuelOutcome.creditOut !== null &&
+          balanceAfter !== null &&
+          reconcileWithIncomingRefuel(
+            before.balance.available,
+            balanceAfter,
+            totalCostSeen,
+            refuelOutcome.creditOut,
+          )
+        ) {
+          await deps.refuel?.markIndexed(refuelOutcome.executionId);
+        }
+        return {
+          before: beforeForRun,
+          originalBalanceBefore: before.balance.available,
+          refuelCreditOut: refuelOutcome?.kind === "indexing" ? refuelOutcome.creditOut : null,
+          completion,
+          balanceAfter,
+          afterReadError,
+          result,
+        };
       },
     );
 
@@ -467,11 +574,14 @@ async function executeLocked(
       outcome.balanceAfter !== null &&
       outcome.completion.generationId.length > 0 &&
       outcome.completion.costUsd != null &&
-      reconcileBalances(
-        fields.balanceBefore,
-        outcome.balanceAfter,
-        totalCostSeen,
-      );
+      (refuelIndexedBeforeRun || outcome.refuelCreditOut === null
+        ? reconcileBalances(fields.balanceBefore, outcome.balanceAfter, totalCostSeen)
+        : reconcileWithIncomingRefuel(
+            outcome.originalBalanceBefore,
+            outcome.balanceAfter,
+            totalCostSeen,
+            outcome.refuelCreditOut,
+          ));
 
     if (!reconciled) {
       const failed = await finish("reconciliation_failed", {
@@ -502,10 +612,41 @@ async function executeLocked(
       receipt: receiptFromRun(succeeded, client),
     };
   } catch (error) {
-    const mapped =
+    let mapped =
       error instanceof FlowFuelError
         ? error
         : new FlowFuelError("PROVIDER_FAILED", "Unexpected run failure");
+    const currentRefuelOutcome = refuelOutcome as RefuelOutcome | null;
+    if (mapped.code === "QUOTA_EXCEEDED" && totalCostSeen === "0.000000000000") {
+      if (
+        currentRefuelOutcome?.kind === "indexing" &&
+        !refuelIndexedBeforeRun
+      ) {
+        mapped = new FlowFuelError(
+          "REFUEL_PENDING",
+          currentRefuelOutcome.transactionHash
+            ? "The refuel is confirmed but Orbio has not indexed the new balance yet"
+            : "An existing refuel has an unresolved onchain outcome",
+          { upstreamStatus: mapped.upstreamStatus },
+        );
+      } else if (
+        currentRefuelOutcome?.kind === "blocked_no_reserve" ||
+        currentRefuelOutcome?.kind === "blocked_weekly_cap" ||
+        currentRefuelOutcome?.kind === "blocked_policy"
+      ) {
+        mapped = new FlowFuelError(
+          "REFUEL_POLICY_BLOCKED",
+          "The refuel policy could not authorize a refill",
+          { upstreamStatus: mapped.upstreamStatus },
+        );
+      } else if (currentRefuelOutcome?.kind === "failed") {
+        mapped = new FlowFuelError(
+          "REFUEL_FAILED",
+          "The refuel transaction did not complete",
+          { upstreamStatus: mapped.upstreamStatus },
+        );
+      }
+    }
     if (totalCostSeen !== "0.000000000000" && balanceAfterSeen === null) {
       try {
         const credentialAgain = await deps.credentials.getForClient(request.clientId);

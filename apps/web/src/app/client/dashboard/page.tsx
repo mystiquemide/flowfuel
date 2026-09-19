@@ -9,15 +9,20 @@ import { FlowFuelLogo } from "@/components/flowfuel-logo";
 import {
   authenticateClient,
   activateCredit,
+  approveUsdgForVault,
   connectInjected,
+  depositUsdg,
+  disableRefuelPolicy,
   injectedChainId,
   injectedProvider,
   issueNonce,
   readApiError,
   requestRobinhoodChain,
+  setRefuelPolicy,
   signNonceMessage,
   truncateMiddle,
   unitsToUsd,
+  withdrawUsdg,
   usdToUnits,
 } from "@/lib/browser";
 
@@ -49,6 +54,24 @@ interface ClientDetail {
     generationId: string | null;
     startedAt: string;
   }>;
+  autoRefuel: {
+    vaultAddress: string;
+    enabled: boolean;
+    thresholdUsd: string;
+    refillAmountUsdg: string;
+    weeklyCapUsdg: string;
+    executorAddress: string | null;
+    maxSlippageBps: number;
+    reserveUsdg: string;
+    weeklySpentUsdg: string;
+    weekEpoch: string | null;
+    activeRefuel: {
+      id: string;
+      status: string;
+      transactionHash: string | null;
+      startedAt: string;
+    } | null;
+  } | null;
 }
 
 interface ClientBootstrap {
@@ -80,6 +103,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 
 const RUN_LABEL: Record<string, string> = {
   succeeded: "succeeded",
+  refuel_pending: "refuel pending",
   client_unfunded: "blocked · unfunded",
   quota_exceeded: "quota stop",
   provider_failed: "provider failed",
@@ -106,6 +130,13 @@ function DashboardInner() {
   const [topUpAmount, setTopUpAmount] = useState("");
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
   const [showKeyDetails, setShowKeyDetails] = useState(false);
+  const [refuelThreshold, setRefuelThreshold] = useState("0.500000");
+  const [refuelAmount, setRefuelAmount] = useState("1.000000");
+  const [refuelWeeklyCap, setRefuelWeeklyCap] = useState("3.000000");
+  const [refuelExecutor, setRefuelExecutor] = useState("");
+  const [refuelSlippage, setRefuelSlippage] = useState("200");
+  const [refuelDepositAmount, setRefuelDepositAmount] = useState("");
+  const [refuelWithdrawAmount, setRefuelWithdrawAmount] = useState("");
 
   const loadDetail = useCallback(async (idOrSlug: string) => {
     try {
@@ -113,6 +144,13 @@ function DashboardInner() {
       if (!res.ok) throw new Error(await readApiError(res));
       const body = (await res.json()) as ClientDetail;
       setDetail(body);
+      if (body.autoRefuel) {
+        setRefuelThreshold(body.autoRefuel.thresholdUsd);
+        setRefuelAmount(body.autoRefuel.refillAmountUsdg);
+        setRefuelWeeklyCap(body.autoRefuel.weeklyCapUsdg);
+        setRefuelExecutor(body.autoRefuel.executorAddress ?? "");
+        setRefuelSlippage(String(body.autoRefuel.maxSlippageBps));
+      }
       setLoadError(null);
       return body;
     } catch (err) {
@@ -236,6 +274,125 @@ function DashboardInner() {
       await loadDetail(detail.slug);
     } catch (err) {
       setPhase({ kind: "error", message: err instanceof Error ? err.message : "The top up didn't finish. Try again." });
+    }
+  }
+
+  async function handleDepositReserve(e: React.FormEvent) {
+    e.preventDefault();
+    if (!detail?.autoRefuel) return;
+    const units = usdToUnits(refuelDepositAmount || "0");
+    if (units <= BigInt(0)) {
+      setPhase({ kind: "error", message: "Enter a USDG deposit amount above 0." });
+      return;
+    }
+    setPhase({ kind: "working", label: "Confirm USDG approval for the refuel vault" });
+    try {
+      const addr = await ensureWallet();
+      await approveUsdgForVault(addr, detail.autoRefuel.vaultAddress, units);
+      setPhase({ kind: "working", label: "Confirm USDG deposit in your wallet" });
+      await depositUsdg(addr, detail.autoRefuel.vaultAddress, units);
+      setRefuelDepositAmount("");
+      setNotice("USDG deposited into your client-owned refuel reserve. Unused reserve remains withdrawable.");
+      setPhase({ kind: "idle" });
+      setTimeout(() => setNotice(null), 7000);
+      await loadDetail(detail.slug);
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The USDG deposit did not finish." });
+    }
+  }
+
+  async function handleWithdrawReserve(withdrawAll = false) {
+    if (!detail?.autoRefuel) return;
+    const amount = withdrawAll ? detail.autoRefuel.reserveUsdg : refuelWithdrawAmount;
+    const units = usdToUnits(amount || "0");
+    if (units <= BigInt(0)) {
+      setPhase({ kind: "error", message: "Enter a USDG withdrawal amount above 0." });
+      return;
+    }
+    setPhase({ kind: "working", label: "Confirm reserve withdrawal in your wallet" });
+    try {
+      const addr = await ensureWallet();
+      await withdrawUsdg(addr, detail.autoRefuel.vaultAddress, units);
+      setRefuelWithdrawAmount("");
+      setNotice(withdrawAll ? "All unused USDG was withdrawn to your wallet." : "Unused USDG was withdrawn to your wallet.");
+      setPhase({ kind: "idle" });
+      setTimeout(() => setNotice(null), 6000);
+      await loadDetail(detail.slug);
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The USDG withdrawal did not finish." });
+    }
+  }
+
+  async function handleSaveRefuelPolicy(e: React.FormEvent) {
+    e.preventDefault();
+    if (!detail?.autoRefuel) return;
+    const refillUnits = usdToUnits(refuelAmount || "0");
+    const weeklyUnits = usdToUnits(refuelWeeklyCap || "0");
+    const thresholdUnits = usdToUnits(refuelThreshold || "0");
+    const slippage = Number(refuelSlippage);
+    if (
+      refillUnits <= BigInt(0) ||
+      weeklyUnits < refillUnits ||
+      thresholdUnits < BigInt(0) ||
+      !Number.isInteger(slippage) ||
+      slippage < 0 ||
+      slippage > 1_000
+    ) {
+      setPhase({ kind: "error", message: "Use positive refill and weekly values, with weekly maximum at least the refill and slippage from 0 to 1000 bps." });
+      return;
+    }
+    let executor: `0x${string}`;
+    try {
+      executor = getAddress(refuelExecutor) as `0x${string}`;
+    } catch {
+      setPhase({ kind: "error", message: "Enter the authorized FlowFuel keeper address." });
+      return;
+    }
+    setPhase({ kind: "working", label: "Confirm the bounded refuel policy in your wallet" });
+    try {
+      const addr = await ensureWallet();
+      await setRefuelPolicy(
+        addr,
+        detail.autoRefuel.vaultAddress,
+        executor,
+        refillUnits,
+        weeklyUnits,
+        slippage,
+      );
+      setPhase({ kind: "working", label: "Saving the live Orbio balance threshold" });
+      const res = await fetch(`/api/clients/${detail.id}/refuel-policy`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ thresholdUsd: refuelThreshold }),
+      });
+      if (!res.ok) throw new Error(await readApiError(res));
+      setNotice("Auto-refuel is enabled. The threshold is read from live Orbio state and spending limits are enforced by the vault.");
+      setPhase({ kind: "idle" });
+      setTimeout(() => setNotice(null), 8000);
+      await loadDetail(detail.slug);
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "The refuel policy did not finish." });
+    }
+  }
+
+  async function handleDisableRefuel() {
+    if (!detail?.autoRefuel) return;
+    setPhase({ kind: "working", label: "Confirm disabling auto-refuel in your wallet" });
+    try {
+      const addr = await ensureWallet();
+      await disableRefuelPolicy(addr, detail.autoRefuel.vaultAddress);
+      const res = await fetch(`/api/clients/${detail.id}/refuel-policy`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ thresholdUsd: refuelThreshold }),
+      });
+      if (!res.ok) throw new Error(await readApiError(res));
+      setNotice("Auto-refuel disabled. Your unused USDG reserve remains yours and can still be withdrawn.");
+      setPhase({ kind: "idle" });
+      setTimeout(() => setNotice(null), 7000);
+      await loadDetail(detail.slug);
+    } catch (err) {
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Auto-refuel could not be disabled." });
     }
   }
 
@@ -908,6 +1065,139 @@ function DashboardInner() {
                 <span style={{ color: "var(--success)" }}>Activated now: ${(balance ?? 0).toFixed(6)}</span>
               </div>
             </div>
+
+            {detail.autoRefuel && (
+              <section
+                aria-labelledby="auto-refuel-title"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "16px 20px",
+                  backgroundColor: "var(--surface)",
+                  marginBottom: 20,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                  <div>
+                    <span style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: "var(--fuel)", letterSpacing: "0.05em", fontWeight: 600 }}>
+                      AUTONOMOUS REFUELING
+                    </span>
+                    <h2 id="auto-refuel-title" style={{ margin: "3px 0 4px", fontSize: "1rem", fontWeight: 550, color: "var(--ink)" }}>
+                      Auto-refuel
+                    </h2>
+                    <p style={{ margin: 0, color: "var(--ink-muted)", fontSize: "0.8125rem", lineHeight: 1.5, maxWidth: 680 }}>
+                      USDG deposited here remains yours until an approved refuel uses it. The trigger is evaluated from live Orbio balance data. Reserve ownership, beneficiary, refill size, slippage, and weekly spending are enforced by the vault.
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "0.6875rem",
+                      color: detail.autoRefuel.enabled ? "var(--success)" : "var(--ink-muted)",
+                      border: `1px solid ${detail.autoRefuel.enabled ? "rgba(102, 209, 158, 0.45)" : "var(--border)"}`,
+                      padding: "4px 9px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    {detail.autoRefuel.enabled ? "ON" : "OFF"}
+                  </span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 14 }}>
+                  {[
+                    ["INFERENCE BALANCE", detail.activatedBalance === null ? "unavailable" : `$${detail.activatedBalance}`],
+                    ["REFUEL RESERVE", `${detail.autoRefuel.reserveUsdg} USDG`],
+                    ["USED THIS WEEK", `${detail.autoRefuel.weeklySpentUsdg} / ${detail.autoRefuel.weeklyCapUsdg} USDG`],
+                    ["TRIGGER BELOW", `$${detail.autoRefuel.thresholdUsd}`],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ padding: "9px 11px", backgroundColor: "var(--canvas)", border: "1px solid var(--border)", borderRadius: 5 }}>
+                      <div style={{ fontSize: "0.625rem", fontFamily: "var(--font-mono)", color: "var(--ink-muted)", marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontSize: "0.875rem", fontFamily: "var(--font-mono)", color: "var(--ink)", fontWeight: 600 }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {detail.autoRefuel.enabled &&
+                  detail.activatedBalance !== null &&
+                  Number(detail.activatedBalance) < Number(detail.autoRefuel.thresholdUsd) &&
+                  detail.autoRefuel.reserveUsdg === "0.000000" && (
+                    <div style={{ marginBottom: 12, padding: "9px 11px", border: "1px solid rgba(239, 116, 111, 0.4)", backgroundColor: "rgba(239, 116, 111, 0.06)", borderRadius: 5, color: "var(--danger)", fontSize: "0.75rem", fontFamily: "var(--font-mono)" }}>
+                      AUTO-REFUEL UNAVAILABLE · Inference balance ${detail.activatedBalance} is below ${detail.autoRefuel.thresholdUsd}, and this client reserve is empty. No fallback funding is used.
+                    </div>
+                  )}
+
+                {detail.autoRefuel.enabled &&
+                  Number(detail.autoRefuel.weeklySpentUsdg) >= Number(detail.autoRefuel.weeklyCapUsdg) && (
+                    <div style={{ marginBottom: 12, padding: "9px 11px", border: "1px solid rgba(240, 184, 90, 0.4)", backgroundColor: "rgba(240, 184, 90, 0.06)", borderRadius: 5, color: "var(--warning)", fontSize: "0.75rem", fontFamily: "var(--font-mono)" }}>
+                      AUTO-REFUEL BLOCKED · Weekly policy cap reached. No Exchange call or fallback funding is used.
+                    </div>
+                  )}
+
+                {detail.autoRefuel.activeRefuel && (
+                  <div style={{ marginBottom: 12, padding: "9px 11px", border: "1px solid rgba(240, 184, 90, 0.35)", backgroundColor: "rgba(240, 184, 90, 0.06)", borderRadius: 5, fontSize: "0.75rem", color: "var(--warning)", fontFamily: "var(--font-mono)" }}>
+                    Refuel {detail.autoRefuel.activeRefuel.status}. A confirmed transaction and Orbio balance indexing are separate states.
+                    {detail.autoRefuel.activeRefuel.transactionHash && (
+                      <a href={explorerTxUrl(detail.autoRefuel.activeRefuel.transactionHash)} target="_blank" rel="noreferrer" style={{ color: "var(--link)", marginLeft: 8 }}>
+                        {truncateMiddle(detail.autoRefuel.activeRefuel.transactionHash, 10, 8)}
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18 }}>
+                  <form onSubmit={(e) => void handleSaveRefuelPolicy(e)}>
+                    <div style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: "var(--ink-muted)", marginBottom: 8 }}>POLICY</div>
+                    <label style={{ display: "block", fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: 8 }}>
+                      Trigger below
+                      <input value={refuelThreshold} onChange={(e) => setRefuelThreshold(e.target.value)} inputMode="decimal" aria-label="Auto-refuel trigger threshold" style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: 5, backgroundColor: "var(--canvas)", color: "var(--ink)", fontFamily: "var(--font-mono)" }} />
+                    </label>
+                    <label style={{ display: "block", fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: 8 }}>
+                      Refill amount, USDG
+                      <input value={refuelAmount} onChange={(e) => setRefuelAmount(e.target.value)} inputMode="decimal" aria-label="Auto-refuel amount" style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: 5, backgroundColor: "var(--canvas)", color: "var(--ink)", fontFamily: "var(--font-mono)" }} />
+                    </label>
+                    <label style={{ display: "block", fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: 8 }}>
+                      Weekly maximum, USDG
+                      <input value={refuelWeeklyCap} onChange={(e) => setRefuelWeeklyCap(e.target.value)} inputMode="decimal" aria-label="Auto-refuel weekly maximum" style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: 5, backgroundColor: "var(--canvas)", color: "var(--ink)", fontFamily: "var(--font-mono)" }} />
+                    </label>
+                    <label style={{ display: "block", fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: 8 }}>
+                      Max slippage, bps
+                      <input value={refuelSlippage} onChange={(e) => setRefuelSlippage(e.target.value)} inputMode="numeric" aria-label="Auto-refuel maximum slippage" style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: 5, backgroundColor: "var(--canvas)", color: "var(--ink)", fontFamily: "var(--font-mono)" }} />
+                    </label>
+                    <label style={{ display: "block", fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: 10 }}>
+                      Authorized keeper
+                      <input value={refuelExecutor} onChange={(e) => setRefuelExecutor(e.target.value)} aria-label="Authorized refuel keeper address" style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: 5, backgroundColor: "var(--canvas)", color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: "0.7rem" }} />
+                    </label>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="submit" disabled={busy || !walletReady} className="btn-primary-action" style={{ backgroundColor: "var(--fuel)", color: "#ffffff", border: "none", padding: "8px 12px", borderRadius: 5, fontSize: "0.75rem", fontWeight: 500, cursor: busy || !walletReady ? "not-allowed" : "pointer", opacity: busy || !walletReady ? 0.55 : 1 }}>
+                        Save policy onchain
+                      </button>
+                      <button type="button" onClick={() => void handleDisableRefuel()} disabled={busy || !detail.autoRefuel.enabled || !walletReady} className="btn-quiet-action" style={{ padding: "8px 12px", borderRadius: 5, fontSize: "0.75rem", cursor: "pointer", opacity: busy || !detail.autoRefuel.enabled || !walletReady ? 0.55 : 1 }}>
+                        Disable auto-refuel
+                      </button>
+                    </div>
+                  </form>
+
+                  <div>
+                    <div style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: "var(--ink-muted)", marginBottom: 8 }}>USDG RESERVE</div>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.75rem", color: "var(--ink-muted)", lineHeight: 1.5 }}>
+                      Deposit from this registered wallet. FlowFuel never signs a withdrawal.
+                    </p>
+                    <form onSubmit={(e) => void handleDepositReserve(e)} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                      <input value={refuelDepositAmount} onChange={(e) => setRefuelDepositAmount(e.target.value)} inputMode="decimal" placeholder="5.000000" aria-label="USDG reserve deposit amount" style={{ flex: "1 1 130px", minWidth: 130, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: 5, backgroundColor: "var(--canvas)", color: "var(--ink)", fontFamily: "var(--font-mono)" }} />
+                      <button type="submit" disabled={busy || !walletReady} className="btn-primary-action" style={{ backgroundColor: "var(--fuel)", color: "#ffffff", border: "none", padding: "8px 12px", borderRadius: 5, fontSize: "0.75rem", cursor: "pointer", opacity: busy || !walletReady ? 0.55 : 1 }}>Deposit USDG</button>
+                    </form>
+                    <form onSubmit={(e) => { e.preventDefault(); void handleWithdrawReserve(false); }} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                      <input value={refuelWithdrawAmount} onChange={(e) => setRefuelWithdrawAmount(e.target.value)} inputMode="decimal" placeholder="Amount to withdraw" aria-label="USDG reserve withdrawal amount" style={{ flex: "1 1 130px", minWidth: 130, padding: "7px 9px", border: "1px solid var(--border)", borderRadius: 5, backgroundColor: "var(--canvas)", color: "var(--ink)", fontFamily: "var(--font-mono)" }} />
+                      <button type="submit" disabled={busy || !walletReady} className="btn-quiet-action" style={{ padding: "8px 12px", borderRadius: 5, fontSize: "0.75rem", cursor: "pointer", opacity: busy || !walletReady ? 0.55 : 1 }}>Withdraw USDG</button>
+                      <button type="button" onClick={() => void handleWithdrawReserve(true)} disabled={busy || !walletReady || detail.autoRefuel.reserveUsdg === "0.000000"} className="btn-quiet-action" style={{ padding: "8px 12px", borderRadius: 5, fontSize: "0.75rem", cursor: "pointer", opacity: busy || !walletReady || detail.autoRefuel.reserveUsdg === "0.000000" ? 0.55 : 1 }}>Withdraw all</button>
+                    </form>
+                    <div style={{ fontSize: "0.6875rem", color: "var(--ink-subtle)", fontFamily: "var(--font-mono)", lineHeight: 1.5 }}>
+                      Vault: {truncateMiddle(detail.autoRefuel.vaultAddress, 10, 8)} · chain 4663
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
 
             {/* Usage table */}
             <div

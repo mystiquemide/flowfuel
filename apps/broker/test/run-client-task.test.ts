@@ -18,6 +18,7 @@ import {
 import { migrateDb } from "@flowfuel/db/migrate";
 
 import { executeRun, type RunDeps } from "../src/run-client-task";
+import type { RefuelCoordinator, RefuelOutcome } from "../src/refuel";
 import { bearerToken, verifyWorkflowToken } from "../src/auth";
 import type { OrbioClient } from "../src/orbio";
 
@@ -116,7 +117,7 @@ function makeOrbio(overrides: Partial<{
   return spy;
 }
 
-function deps(orbio: OrbioClient): RunDeps {
+function deps(orbio: OrbioClient, refuel?: RefuelCoordinator): RunDeps {
   return {
     clients: clientStore,
     credentials: credentialStore,
@@ -127,6 +128,30 @@ function deps(orbio: OrbioClient): RunDeps {
     chainId: ROBINHOOD_CHAIN_ID,
     inspectWebsite: async () => ({ url: "https://example.com/", title: "Example", text: "Example company" }),
     settleDelay: async () => {},
+    refuel,
+  };
+}
+
+function fakeRefuel(outcome: RefuelOutcome) {
+  let prepareCalls = 0;
+  let indexedCalls = 0;
+  const coordinator: RefuelCoordinator = {
+    prepare: async () => {
+      prepareCalls += 1;
+      return outcome;
+    },
+    markIndexed: async () => {
+      indexedCalls += 1;
+    },
+  };
+  return {
+    coordinator,
+    get prepareCalls() {
+      return prepareCalls;
+    },
+    get indexedCalls() {
+      return indexedCalls;
+    },
   };
 }
 
@@ -186,6 +211,100 @@ afterAll(async () => {
 });
 
 describe("executeRun", () => {
+  it("does not refuel when the coordinator says the live balance is above threshold", async () => {
+    const client = await makeClient("above-threshold");
+    await storeCredential(client, CLIENT_A_SECRET);
+    const refuel = fakeRefuel({ kind: "not_needed" });
+    const result = await executeRun(
+      deps(makeOrbio({ balances: ["0.800000", "0.799974"] }).client, refuel.coordinator),
+      runRequest(client, "refuel-above-threshold"),
+    );
+    expect(result.status).toBe("succeeded");
+    expect(refuel.prepareCalls).toBe(1);
+    expect(refuel.indexedCalls).toBe(0);
+  });
+
+  it("continues after a confirmed refuel becomes visible in the gateway", async () => {
+    const client = await makeClient("refuel-indexed");
+    await storeCredential(client, CLIENT_A_SECRET);
+    const refuel = fakeRefuel({
+      kind: "indexing",
+      executionId: "refuel-1",
+      status: "indexing",
+      transactionHash: `0x${"ab".repeat(32)}`,
+      creditOut: "1.400000",
+    });
+    const result = await executeRun(
+      deps(
+        makeOrbio({ balances: ["0.180000", "1.580000", "1.579974"] }).client,
+        refuel.coordinator,
+      ),
+      runRequest(client, "refuel-indexed"),
+    );
+    expect(result.status).toBe("succeeded");
+    expect(refuel.indexedCalls).toBe(1);
+    if (result.status === "succeeded") {
+      expect(result.receipt.balanceBefore).toBe("1.580000");
+      expect(result.receipt.balanceAfter).toBe("1.579974");
+    }
+  });
+
+  it("returns refuel_pending when the transaction is confirmed but the gateway still rejects", async () => {
+    const client = await makeClient("refuel-pending");
+    await storeCredential(client, CLIENT_A_SECRET);
+    const refuel = fakeRefuel({
+      kind: "indexing",
+      executionId: "refuel-2",
+      status: "indexing",
+      transactionHash: `0x${"cd".repeat(32)}`,
+      creditOut: "1.400000",
+    });
+    const result = await executeRun(
+      deps(
+        makeOrbio({
+          balances: ["0.000000", "0.000000", "0.000000"],
+          completionError: new FlowFuelError("QUOTA_EXCEEDED", "insufficient_quota", { upstreamStatus: 402 }),
+        }).client,
+        refuel.coordinator,
+      ),
+      runRequest(client, "refuel-pending"),
+    );
+    expect(result.status).toBe("refuel_pending");
+    if (result.status !== "succeeded") {
+      expect(result.error.code).toBe("REFUEL_PENDING");
+      expect(result.error.upstreamStatus).toBe(402);
+    }
+    expect(refuel.indexedCalls).toBe(0);
+  });
+
+  it("keeps a no-reserve block separate from gateway funding and never falls back", async () => {
+    const client = await makeClient("refuel-no-reserve");
+    await storeCredential(client, CLIENT_A_SECRET);
+    const refuel = fakeRefuel({
+      kind: "blocked_no_reserve",
+      executionId: "refuel-3",
+      status: "blocked_no_reserve",
+      transactionHash: null,
+      creditOut: null,
+    });
+    const result = await executeRun(
+      deps(
+        makeOrbio({
+          balances: ["0.000000"],
+          completionError: new FlowFuelError("QUOTA_EXCEEDED", "insufficient_quota", { upstreamStatus: 402 }),
+        }).client,
+        refuel.coordinator,
+      ),
+      runRequest(client, "refuel-no-reserve"),
+    );
+    expect(result.status).toBe("quota_exceeded");
+    if (result.status !== "succeeded") {
+      expect(result.error.code).toBe("REFUEL_POLICY_BLOCKED");
+      expect(result.error.upstreamStatus).toBe(402);
+    }
+    expect(refuel.prepareCalls).toBe(1);
+  });
+
   it("succeeds for a funded client and returns a receipt", async () => {
     const clientA = await makeClient("a");
     await storeCredential(clientA, CLIENT_A_SECRET);

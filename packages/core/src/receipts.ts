@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { explorerTxUrl } from "./constants";
 import { FlowFuelError } from "./errors";
+import { refuelEvidenceSchema } from "./refuel";
 import {
   decimalStringSchema,
   generationEvidenceSchema,
@@ -40,6 +41,7 @@ export const publicReceiptSchema = z.strictObject({
   startedAt: isoTimestampSchema,
   completedAt: isoTimestampSchema.nullable(),
   source: z.literal("recorded_live_execution"),
+  refuel: refuelEvidenceSchema.nullable().default(null),
 });
 export type PublicReceipt = z.infer<typeof publicReceiptSchema>;
 
@@ -58,6 +60,7 @@ export interface ReceiptSource {
   upstreamStatus: number | null;
   startedAt: string;
   completedAt: string | null;
+  refuel?: z.infer<typeof refuelEvidenceSchema> | null;
 }
 
 const MICRO_USD = 1_000_000;
@@ -94,6 +97,20 @@ export function reconcileBalances(
   return Math.abs(before - after - cost) <= toleranceMicroUsd;
 }
 
+function reconcileBalancesWithRefuel(
+  balanceBefore: string,
+  balanceAfter: string,
+  costUsd: string,
+  creditOut: string,
+): boolean {
+  return Math.abs(
+    toMicroUsd(balanceBefore) +
+      toMicroUsd(creditOut) -
+      toMicroUsd(balanceAfter) -
+      toMicroUsd(costUsd),
+  ) <= RECONCILIATION_TOLERANCE_MICRO_USD;
+}
+
 /**
  * Builds a public receipt from a run record plus optional activation hash.
  * Only allowlisted fields are copied. The result is validated against the
@@ -106,13 +123,30 @@ export function toPublicReceipt(
   run: ReceiptSource,
   activationTxHash: string | null = null,
 ): PublicReceipt {
+  const normalReconciliation =
+    run.balanceBefore !== null &&
+    run.balanceAfter !== null &&
+    run.costUsd !== null &&
+    reconcileBalances(run.balanceBefore, run.balanceAfter, run.costUsd);
+  const refuelReconciliation =
+    run.refuel?.creditOut !== undefined &&
+    run.refuel?.creditOut !== null &&
+    run.balanceBefore !== null &&
+    run.balanceAfter !== null &&
+    run.costUsd !== null &&
+    reconcileBalancesWithRefuel(
+      run.balanceBefore,
+      run.balanceAfter,
+      run.costUsd,
+      run.refuel.creditOut,
+    );
   const reconciled =
     run.status === "succeeded" &&
     run.generationId !== null &&
     run.costUsd !== null &&
     run.balanceBefore !== null &&
     run.balanceAfter !== null &&
-    reconcileBalances(run.balanceBefore, run.balanceAfter, run.costUsd);
+    (normalReconciliation || refuelReconciliation);
   if (run.status === "succeeded" && !reconciled) {
     throw new FlowFuelError(
       "RECONCILIATION_FAILED",
@@ -142,5 +176,6 @@ export function toPublicReceipt(
     startedAt: run.startedAt,
     completedAt: run.completedAt,
     source: "recorded_live_execution",
+    refuel: run.refuel ?? null,
   });
 }

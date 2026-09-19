@@ -52,6 +52,41 @@ describe("toPublicReceipt", () => {
     expect(receipt.source).toBe("recorded_live_execution");
   });
 
+  it("projects safe refuel evidence without secrets", () => {
+    const receipt = toPublicReceipt({
+      ...sourceRun,
+      refuel: {
+        transactionHash: TX,
+        beneficiary: "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F",
+        usdgSpent: "0.980392",
+        creditOut: "1.400560",
+        activationId: "241",
+        status: "indexed",
+      },
+    });
+    expect(receipt.refuel?.transactionHash).toBe(TX);
+    expect(receipt.refuel?.beneficiary).toBe(
+      "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F",
+    );
+    expect(JSON.stringify(receipt)).not.toContain("private");
+  });
+
+  it("reconciles a run when the refuel indexes during the run", () => {
+    const receipt = toPublicReceipt({
+      ...sourceRun,
+      balanceAfter: "0.010775",
+      refuel: {
+        transactionHash: TX,
+        beneficiary: "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F",
+        usdgSpent: "0.980392",
+        creditOut: "0.001000",
+        activationId: "241",
+        status: "indexed",
+      },
+    });
+    expect(receipt.reconciled).toBe(true);
+  });
+
   it("emits only allowlisted keys", () => {
     const allowed = new Set([
       "runId",
@@ -73,6 +108,7 @@ describe("toPublicReceipt", () => {
       "startedAt",
       "completedAt",
       "source",
+      "refuel",
     ]);
     const receipt = toPublicReceipt(sourceRun);
     for (const key of Object.keys(receipt)) {

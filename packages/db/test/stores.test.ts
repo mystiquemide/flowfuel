@@ -7,6 +7,8 @@ import {
   createCredentialStore,
   createDb,
   createRunStore,
+  createRefuelExecutionStore,
+  createRefuelPolicyStore,
   databaseUrl,
 } from "../src/index";
 
@@ -19,6 +21,8 @@ const clientStore = createClientStore(db);
 const credentialStore = createCredentialStore(db);
 const runStore = createRunStore(db);
 const auditStore = createAuditStore(db);
+const refuelPolicyStore = createRefuelPolicyStore(db);
+const refuelExecutionStore = createRefuelExecutionStore(db);
 
 const WALLET_A = "0x78A4e72C413B1A91A25D253988BB61258d9C8c2F";
 const WALLET_B = "0xA0234103102008dCf310182a829Cd18408373CEC";
@@ -271,5 +275,73 @@ describe("audit store", () => {
       publicData: { epoch: 0, fingerprint: "f".repeat(16) },
     });
     expect(ev.publicData).toMatchObject({ epoch: 0 });
+  });
+});
+
+describe("refuel stores", () => {
+  it("keeps policy records tenant-bound and updates the client policy", async () => {
+    const a = await makeClient("refuel-a", WALLET_A);
+    const b = await makeClient("refuel-b", WALLET_B);
+    await refuelPolicyStore.save({
+      clientId: a.id,
+      enabled: true,
+      thresholdUsd: "0.500000",
+      refillAmountUsdg: "1.000000",
+      weeklyCapUsdg: "3.000000",
+      executorAddress: "0x00000000000000000000000000000000000000e1",
+      maxSlippageBps: 200,
+    });
+    expect((await refuelPolicyStore.getForClient(a.id))?.thresholdUsd).toBe("0.500000");
+    expect(await refuelPolicyStore.getForClient(b.id)).toBeNull();
+
+    const updated = await refuelPolicyStore.save({
+      clientId: a.id,
+      enabled: false,
+      thresholdUsd: "0.250000",
+      refillAmountUsdg: "1.000000",
+      weeklyCapUsdg: "3.000000",
+      executorAddress: "0x00000000000000000000000000000000000000e1",
+      maxSlippageBps: 200,
+    });
+    expect(updated.enabled).toBe(false);
+    expect((await refuelPolicyStore.getForClient(a.id))?.thresholdUsd).toBe("0.250000");
+  });
+
+  it("tracks an active refuel through indexing without crossing clients", async () => {
+    const a = await makeClient("refuel-exec-a", WALLET_A);
+    const b = await makeClient("refuel-exec-b", WALLET_B);
+    const run = await runStore.create({
+      clientId: a.id,
+      workflowRunId: "refuel-workflow",
+      taskType: "lead_intelligence",
+      model: "google/gemini-2.5-flash",
+      taskHash: "a".repeat(64),
+      idempotencyKey: "refuel-idempotency".padEnd(64, "0"),
+    });
+    const row = await refuelExecutionStore.create({
+      clientId: a.id,
+      runId: run.id,
+      workflowRunId: "refuel-workflow",
+      triggerBalance: "0.180000",
+      threshold: "0.500000",
+      requestedAmount: "1.000000",
+      beneficiaryAddress: WALLET_A,
+    });
+    expect((await refuelExecutionStore.getActiveForClient(a.id))?.id).toBe(row.id);
+    expect(await refuelExecutionStore.getActiveForClient(b.id)).toBeNull();
+
+    await refuelExecutionStore.updateSubmitted(row.id, `0x${"b".repeat(64)}`);
+    const confirmed = await refuelExecutionStore.updateConfirmed(row.id, {
+      transactionHash: `0x${"b".repeat(64)}`,
+      quoteCreditOut: "1400560",
+      quoteUsdgSpent: "980392",
+      minCreditOut: "1372548",
+      usdgSpent: "980392",
+      creditOut: "1400560",
+      activationId: "241",
+    });
+    expect(confirmed?.status).toBe("indexing");
+    await refuelExecutionStore.markIndexed(row.id);
+    expect((await refuelExecutionStore.getByRunId(run.id))?.status).toBe("indexed");
   });
 });

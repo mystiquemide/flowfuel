@@ -13,6 +13,9 @@ export const ERROR_CODES = [
   "QUOTA_EXCEEDED",
   "PROVIDER_FAILED",
   "RECONCILIATION_FAILED",
+  "REFUEL_PENDING",
+  "REFUEL_POLICY_BLOCKED",
+  "REFUEL_FAILED",
 ] as const;
 
 export const errorCodeSchema = z.enum(ERROR_CODES);
@@ -31,6 +34,9 @@ const CLIENT_ACTIONS: Record<ErrorCode, string> = {
   QUOTA_EXCEEDED: "Reduce the request size or top up the activated balance.",
   PROVIDER_FAILED: "Retry later. The provider request did not succeed.",
   RECONCILIATION_FAILED: "Investigate the run. Do not treat it as successful.",
+  REFUEL_PENDING: "Onchain refuel is confirmed but Orbio has not indexed it yet. Wait and retry.",
+  REFUEL_POLICY_BLOCKED: "Auto-refuel was blocked by this client's reserve or weekly policy. No fallback funding was used.",
+  REFUEL_FAILED: "The auto-refuel transaction did not complete. No fallback funding was used.",
 };
 
 export class FlowFuelError extends Error {

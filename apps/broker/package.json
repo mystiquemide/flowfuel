@@ -16,6 +16,7 @@
     "@flowfuel/core": "workspace:*",
     "@flowfuel/db": "workspace:*",
     "ipaddr.js": "2.5.0",
+    "viem": "2.56.3",
     "zod": "4.6.2"
   },
   "devDependencies": {

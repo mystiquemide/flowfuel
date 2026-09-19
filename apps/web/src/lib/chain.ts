@@ -14,7 +14,9 @@ import {
   creditContractAbi,
   decodeActivationLog,
   exchangeAbi,
+  refuelVaultAbi,
   usdgAbi,
+  unitsToDecimal,
 } from "@flowfuel/core";
 
 import { robinhoodRpcUrlFromEnv } from "./env";
@@ -99,6 +101,77 @@ export async function exchangeMaxFills(): Promise<bigint> {
     functionName: "MAX_FILLS",
     args: [],
   })) as bigint;
+}
+
+export interface RefuelVaultState {
+  reserve: bigint;
+  policy: {
+    enabled: boolean;
+    executor: string;
+    refillAmount: bigint;
+    weeklyCap: bigint;
+    maxSlippageBps: number;
+  };
+  weekEpoch: bigint;
+  weekSpent: bigint;
+}
+
+function tupleValue<T>(value: unknown, index: number, key: string): T {
+  if (Array.isArray(value)) return value[index] as T;
+  if (typeof value === "object" && value !== null && key in value) {
+    return (value as Record<string, unknown>)[key] as T;
+  }
+  throw new Error(`Vault response omitted ${key}`);
+}
+
+/** Reads the client-owned reserve and policy from the configured vault. */
+export async function refuelVaultState(
+  vaultAddress: string,
+  clientAddress: string,
+): Promise<RefuelVaultState> {
+  const vault = getAddress(vaultAddress);
+  const client = getAddress(clientAddress);
+  const [reserve, policyRaw, usageRaw] = await Promise.all([
+    publicClient().readContract({
+      address: vault,
+      abi: refuelVaultAbi,
+      functionName: "reserves",
+      args: [client],
+    }),
+    publicClient().readContract({
+      address: vault,
+      abi: refuelVaultAbi,
+      functionName: "policies",
+      args: [client],
+    }),
+    publicClient().readContract({
+      address: vault,
+      abi: refuelVaultAbi,
+      functionName: "currentWeeklyUsage",
+      args: [client],
+    }),
+  ]);
+  return {
+    reserve: reserve as bigint,
+    policy: {
+      enabled: tupleValue<boolean>(policyRaw, 0, "enabled"),
+      executor: getAddress(tupleValue<string>(policyRaw, 1, "executor")),
+      refillAmount: tupleValue<bigint>(policyRaw, 2, "refillAmount"),
+      weeklyCap: tupleValue<bigint>(policyRaw, 3, "weeklyCap"),
+      maxSlippageBps: Number(tupleValue<bigint | number>(policyRaw, 4, "maxSlippageBps")),
+    },
+    weekEpoch: tupleValue<bigint>(usageRaw, 0, "epoch"),
+    weekSpent: tupleValue<bigint>(usageRaw, 1, "spent"),
+  };
+}
+
+export function refuelVaultStateForUi(state: RefuelVaultState) {
+  return {
+    reserveUsdg: unitsToDecimal(state.reserve),
+    weeklySpentUsdg: unitsToDecimal(state.weekSpent),
+    refillAmountUsdg: unitsToDecimal(state.policy.refillAmount),
+    weeklyCapUsdg: unitsToDecimal(state.policy.weeklyCap),
+  };
 }
 
 export interface VerifiedActivation {

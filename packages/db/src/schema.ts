@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -37,6 +38,7 @@ export const activationStatusEnum = pgEnum("activation_status", [
 export const runStatusEnum = pgEnum("run_status", [
   "running",
   "succeeded",
+  "refuel_pending",
   "client_unfunded",
   "quota_exceeded",
   "provider_failed",
@@ -49,6 +51,18 @@ export const auditActorTypeEnum = pgEnum("audit_actor_type", [
   "agency",
   "workflow",
   "system",
+]);
+
+export const refuelExecutionStatusEnum = pgEnum("refuel_execution_status", [
+  "requested",
+  "submitted",
+  "confirmed",
+  "indexing",
+  "indexed",
+  "failed",
+  "blocked_no_reserve",
+  "blocked_weekly_cap",
+  "blocked_policy",
 ]);
 
 export const clients = pgTable(
@@ -159,6 +173,65 @@ export const runs = pgTable(
   ],
 );
 
+export const clientRefuelPolicies = pgTable("client_refuel_policies", {
+  clientId: uuid("client_id")
+    .primaryKey()
+    .references(() => clients.id),
+  enabled: boolean("enabled").notNull().default(false),
+  thresholdUsd: numeric("threshold_usd", { precision: 20, scale: 6 }).notNull(),
+  refillAmountUsdg: numeric("refill_amount_usdg", {
+    precision: 20,
+    scale: 6,
+  }).notNull(),
+  weeklyCapUsdg: numeric("weekly_cap_usdg", { precision: 20, scale: 6 }).notNull(),
+  executorAddress: text("executor_address").notNull(),
+  maxSlippageBps: integer("max_slippage_bps").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const refuelExecutions = pgTable(
+  "refuel_executions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id),
+    runId: uuid("run_id").references(() => runs.id),
+    workflowRunId: text("workflow_run_id"),
+    triggerBalance: numeric("trigger_balance", { precision: 20, scale: 6 }).notNull(),
+    threshold: numeric("threshold", { precision: 20, scale: 6 }).notNull(),
+    requestedAmount: numeric("requested_amount", { precision: 20, scale: 6 }).notNull(),
+    transactionHash: text("transaction_hash"),
+    status: refuelExecutionStatusEnum("status").notNull().default("requested"),
+    quoteCreditOut: numeric("quote_credit_out", { precision: 30, scale: 0 }),
+    quoteUsdgSpent: numeric("quote_usdg_spent", { precision: 30, scale: 0 }),
+    quoteFeeAtoms: numeric("quote_fee_atoms", { precision: 30, scale: 0 }),
+    quoteFills: numeric("quote_fills", { precision: 30, scale: 0 }),
+    quoteReason: integer("quote_reason"),
+    minCreditOut: numeric("min_credit_out", { precision: 30, scale: 0 }),
+    usdgSpent: numeric("usdg_spent", { precision: 30, scale: 0 }),
+    creditOut: numeric("credit_out", { precision: 30, scale: 0 }),
+    activationId: text("activation_id"),
+    beneficiaryAddress: text("beneficiary_address").notNull(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    indexedAt: timestamp("indexed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("refuel_executions_tx_unique").on(t.transactionHash),
+    index("refuel_executions_client_idx").on(t.clientId, t.startedAt),
+    index("refuel_executions_active_idx").on(t.clientId, t.status),
+  ],
+);
+
 export const auditEvents = pgTable(
   "audit_events",
   {
@@ -180,4 +253,6 @@ export type WalletNonceRow = typeof walletNonces.$inferSelect;
 export type ClientCredentialRow = typeof clientCredentials.$inferSelect;
 export type ActivationRow = typeof activations.$inferSelect;
 export type RunRow = typeof runs.$inferSelect;
+export type ClientRefuelPolicyRow = typeof clientRefuelPolicies.$inferSelect;
+export type RefuelExecutionRow = typeof refuelExecutions.$inferSelect;
 export type AuditEventRow = typeof auditEvents.$inferSelect;

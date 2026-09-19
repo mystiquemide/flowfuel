@@ -1,6 +1,8 @@
 import {
   FlowFuelError,
   toPublicReceipt,
+  unitsToDecimal,
+  walletAddressSchema,
   uuidSchema,
   type ReceiptSource,
 } from "@flowfuel/core";
@@ -32,6 +34,21 @@ export async function GET(
     if (!run) throw new FlowFuelError("NOT_FOUND", "Unknown runId");
     const client = await deps.clients.getById(run.clientId);
     if (!client) throw new FlowFuelError("NOT_FOUND", "Unknown client");
+    const refuelRow = await deps.refuels?.getByRunId(id);
+    const refuel =
+      refuelRow?.transactionHash &&
+      refuelRow.usdgSpent &&
+      refuelRow.creditOut &&
+      refuelRow.activationId
+        ? {
+            transactionHash: refuelRow.transactionHash,
+            beneficiary: walletAddressSchema.parse(refuelRow.beneficiaryAddress),
+            usdgSpent: unitsToDecimal(BigInt(refuelRow.usdgSpent)),
+            creditOut: unitsToDecimal(BigInt(refuelRow.creditOut)),
+            activationId: refuelRow.activationId,
+            status: refuelRow.status,
+          }
+        : null;
 
     const source: ReceiptSource = {
       id: run.id,
@@ -48,6 +65,7 @@ export async function GET(
       upstreamStatus: run.upstreamStatus,
       startedAt: run.startedAt.toISOString(),
       completedAt: run.completedAt?.toISOString() ?? null,
+      refuel,
     };
     return Response.json(toPublicReceipt(source, run.activationTxHash));
   } catch (error) {

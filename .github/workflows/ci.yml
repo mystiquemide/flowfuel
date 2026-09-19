@@ -31,6 +31,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
       - run: pnpm install --frozen-lockfile
       - name: Create test database
         run: PGPASSWORD=flowfuel psql -h localhost -p 55432 -U flowfuel -d flowfuel -c "CREATE DATABASE flowfuel_test"
@@ -38,3 +39,6 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm audit --prod
+      - run: forge build
+      - run: forge test

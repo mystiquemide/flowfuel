@@ -136,6 +136,7 @@ export const runSuccessResponseSchema = z.strictObject({
 export type RunSuccessResponse = z.infer<typeof runSuccessResponseSchema>;
 
 export const runFailureStatusSchema = z.enum([
+  "refuel_pending",
   "client_unfunded",
   "quota_exceeded",
   "provider_failed",

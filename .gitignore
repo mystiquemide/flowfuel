@@ -3,6 +3,8 @@ node_modules/
 .next/
 dist/
 coverage/
+contracts/out/
+cache/
 *.tsbuildinfo
 .turbo/
 
@@ -32,4 +34,3 @@ PROJECT_PLAN.md
 .claude/
 .vercel/
 .DS_Store
-

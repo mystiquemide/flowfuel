@@ -5,3 +5,5 @@ export * from "./credential-store";
 export * from "./run-store";
 export * from "./audit-store";
 export * from "./activation-store";
+export * from "./refuel-policy-store";
+export * from "./refuel-execution-store";

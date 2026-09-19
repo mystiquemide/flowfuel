@@ -17,6 +17,9 @@ The architecture exists to enforce one rule:
 flowchart LR
     Client[Client wallet] -->|sign nonce and Orbio key message| Web[FlowFuel web]
     Client -->|activate CREDIT| Credit[CREDIT contract]
+    Client -->|deposit or withdraw USDG| RefuelVault[FlowFuelRefuelVault]
+    Keeper[FlowFuel keeper] -->|refuel client only| RefuelVault
+    RefuelVault -->|bounded buyAndActivate| Exchange[Orbio Exchange]
     Agency[Agency operator] --> N8N[n8n agent workflow]
     N8N -->|clientId and task| Broker[FlowFuel run broker]
     Broker --> Vault[(Encrypted credential store)]
@@ -27,6 +30,31 @@ flowchart LR
     Web --> Credit
     Web --> Orbio
 ```
+
+### 2.1 Autonomous refueling extension
+
+The refuel vault is a small, non-upgradeable contract that holds separately
+accounted USDG reserves. A client deposits USDG, sets its own executor,
+refill amount, weekly cap, and maximum slippage, and can withdraw unused USDG
+at any time. The keeper has no withdrawal path and cannot provide a separate
+beneficiary. `refuel(client)` derives the beneficiary from that client,
+obtains the Exchange quote inside the vault, approves only the configured
+refill amount for one call, clears the allowance, and records actual
+`usdgSpent` in the reserve and weekly bucket.
+
+The threshold is intentionally offchain. FlowFuel reads the live Orbio
+gateway balance and compares it with the client's stored threshold. The vault
+does not claim to enforce the threshold because it has no Orbio oracle. The
+vault does enforce the financial boundary: authorized executor, reserve,
+refill amount, weekly cap, quote-derived slippage, and client-fixed
+beneficiary.
+
+Transaction confirmation and gateway indexing are separate states. After a
+confirmed refuel, FlowFuel polls the client's `/key` response for a bounded
+period. If the current balance still cannot execute the task, the run returns
+`refuel_pending` and the active refuel record prevents another refill while
+the first one indexes. If the existing balance can run the task, the agent can
+continue while indexing finishes.
 
 ## 3. Components
 
@@ -56,6 +84,9 @@ Responsibilities:
 - Read the balance after inference.
 - Normalize gateway errors without hiding upstream evidence.
 - Write a terminal run record that application code cannot rewrite after completion.
+- When the live balance is below the client threshold, evaluate the client's
+  refuel policy and invoke only the configured vault executor. A blocked or
+  pending refuel never selects another credential or funding source.
 
 The broker is the only component allowed to decrypt an Orbio credential.
 It never retries under a different credential. Funding failure is terminal for that run.
@@ -223,6 +254,35 @@ The web and broker may share one deployment during the hackathon if that reduces
 | status | enum | pending, confirmed, failed |
 | created_at | timestamp | Server time |
 
+### client_refuel_policies
+
+| Field | Type | Rules |
+|---|---|---|
+| client_id | UUID | Primary key and foreign key |
+| enabled | boolean | Mirrors the wallet-owned vault policy |
+| threshold_usd | decimal | Live gateway trigger, evaluated offchain |
+| refill_amount_usdg | decimal | Mirrored from the vault |
+| weekly_cap_usdg | decimal | Mirrored from the vault |
+| executor_address | address | Wallet-authorized keeper address |
+| max_slippage_bps | integer | Mirrored from the vault |
+| created_at / updated_at | timestamp | Server timestamps |
+
+### refuel_executions
+
+| Field | Type | Rules |
+|---|---|---|
+| id | UUID | Primary key |
+| client_id | UUID | Tenant-bound reserve owner |
+| run_id | UUID | Run that caused the check |
+| workflow_run_id | text | Replay and proof context |
+| trigger_balance / threshold | decimal | Gateway trigger evidence |
+| requested_amount | decimal | Client policy refill amount |
+| transaction_hash | bytes32 | Present after keeper submission |
+| status | enum | requested, submitted, indexing, indexed, failed, or blocked |
+| quote and output fields | numeric | Quote, actual spend, CREDIT output, activation ID |
+| beneficiary_address | address | Must equal the client wallet |
+| started_at / submitted_at / confirmed_at / indexed_at | timestamp | State transition evidence |
+
 ### runs
 
 | Field | Type | Rules |
@@ -232,7 +292,7 @@ The web and broker may share one deployment during the hackathon if that reduces
 | workflow_run_id | text | Optional n8n execution ID |
 | task_type | text | Allowlisted |
 | model | text | Allowlisted |
-| status | enum | running, succeeded, client_unfunded, quota_exceeded, provider_failed, validation_failed, reconciliation_failed |
+| status | enum | running, succeeded, refuel_pending, client_unfunded, quota_exceeded, provider_failed, validation_failed, reconciliation_failed |
 | generation_id | text | Present only for successful provider execution |
 | generations | JSON | One entry per Orbio generation, including phase, model, ID, cost, and token counts |
 | result_ciphertext | text | AES-256-GCM encrypted structured agent result for idempotent replay |
@@ -503,6 +563,13 @@ Reason: automation platforms retry and must not charge twice.
 Decision: canonicalize and hash the bounded task before selecting a credential.
 
 Reason: funded and unfunded receipts must prove they attempted the same work without exposing content.
+
+### ADR-009: Keep financial policy deterministic
+
+Decision: model reasoning can identify work and FlowFuel can evaluate a live
+balance threshold, but no model output can authorize spending. USDG reserve
+ownership, executor authorization, slippage, beneficiary, refill amount, and
+weekly cap are checked by the contract.
 
 ## 12. Verification matrix
 

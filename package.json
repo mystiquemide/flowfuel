@@ -14,12 +14,15 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "contracts:build": "forge build",
+    "contracts:test": "forge test",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "n8n:up": "docker compose up -d n8n",
     "clean": "pnpm -r exec rm -rf dist .next node_modules"
   },
   "devDependencies": {
+    "@openzeppelin/contracts": "5.1.0",
     "typescript": "6.0.3",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.4",

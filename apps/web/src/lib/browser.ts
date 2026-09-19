@@ -16,6 +16,7 @@ import {
   beneficiaryBytes32,
   creditContractAbi,
   exchangeAbi,
+  refuelVaultAbi,
   usdgAbi,
 } from "@flowfuel/core";
 
@@ -133,6 +134,112 @@ export async function approveUsdg(
   if (receipt.status !== "success") {
     throw new Error("USDG approval transaction reverted on chain");
   }
+  return hash;
+}
+
+async function waitForWalletReceipt(hash: `0x${string}`): Promise<void> {
+  const publicClient = createPublicClient({
+    transport: http("https://rpc.mainnet.chain.robinhood.com"),
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Wallet transaction reverted on chain");
+}
+
+/** Approves exactly one client deposit for the FlowFuel vault. */
+export async function approveUsdgForVault(
+  account: `0x${string}`,
+  vaultAddress: string,
+  amountUnits: bigint,
+): Promise<`0x${string}`> {
+  const eth = injectedProvider();
+  if (!eth) throw new Error("No wallet provider found");
+  const hash = await walletClientFor(eth).writeContract({
+    account,
+    chain: null,
+    address: getAddress(USDG_CONTRACT_ADDRESS),
+    abi: usdgAbi,
+    functionName: "approve",
+    args: [getAddress(vaultAddress), amountUnits],
+  });
+  await waitForWalletReceipt(hash);
+  return hash;
+}
+
+export async function depositUsdg(
+  account: `0x${string}`,
+  vaultAddress: string,
+  amountUnits: bigint,
+): Promise<`0x${string}`> {
+  const eth = injectedProvider();
+  if (!eth) throw new Error("No wallet provider found");
+  const hash = await walletClientFor(eth).writeContract({
+    account,
+    chain: null,
+    address: getAddress(vaultAddress),
+    abi: refuelVaultAbi,
+    functionName: "deposit",
+    args: [amountUnits],
+  });
+  await waitForWalletReceipt(hash);
+  return hash;
+}
+
+export async function withdrawUsdg(
+  account: `0x${string}`,
+  vaultAddress: string,
+  amountUnits: bigint,
+): Promise<`0x${string}`> {
+  const eth = injectedProvider();
+  if (!eth) throw new Error("No wallet provider found");
+  const hash = await walletClientFor(eth).writeContract({
+    account,
+    chain: null,
+    address: getAddress(vaultAddress),
+    abi: refuelVaultAbi,
+    functionName: "withdraw",
+    args: [amountUnits],
+  });
+  await waitForWalletReceipt(hash);
+  return hash;
+}
+
+export async function setRefuelPolicy(
+  account: `0x${string}`,
+  vaultAddress: string,
+  executor: `0x${string}`,
+  refillAmount: bigint,
+  weeklyCap: bigint,
+  maxSlippageBps: number,
+): Promise<`0x${string}`> {
+  const eth = injectedProvider();
+  if (!eth) throw new Error("No wallet provider found");
+  const hash = await walletClientFor(eth).writeContract({
+    account,
+    chain: null,
+    address: getAddress(vaultAddress),
+    abi: refuelVaultAbi,
+    functionName: "setPolicy",
+    args: [getAddress(executor), refillAmount, weeklyCap, maxSlippageBps],
+  });
+  await waitForWalletReceipt(hash);
+  return hash;
+}
+
+export async function disableRefuelPolicy(
+  account: `0x${string}`,
+  vaultAddress: string,
+): Promise<`0x${string}`> {
+  const eth = injectedProvider();
+  if (!eth) throw new Error("No wallet provider found");
+  const hash = await walletClientFor(eth).writeContract({
+    account,
+    chain: null,
+    address: getAddress(vaultAddress),
+    abi: refuelVaultAbi,
+    functionName: "disablePolicy",
+    args: [],
+  });
+  await waitForWalletReceipt(hash);
   return hash;
 }
 
