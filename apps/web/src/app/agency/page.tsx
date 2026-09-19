@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FlowFuelLogo } from "@/components/flowfuel-logo";
 import { readApiError, truncateMiddle } from "@/lib/browser";
 import { createClient, runClientTest, type TestRunResult } from "./actions";
@@ -67,6 +68,7 @@ function statusDot(status: string): string {
 }
 
 export default function AgencyPage() {
+  const router = useRouter();
   const [clients, setClients] = useState<ApiClient[] | null>(null);
   const [runs, setRuns] = useState<ApiRun[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -80,6 +82,7 @@ export default function AgencyPage() {
   const [adding, setAdding] = useState<boolean>(false);
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [showN8nConfig, setShowN8nConfig] = useState<boolean>(false);
+  const [signingOut, setSigningOut] = useState<boolean>(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -167,6 +170,23 @@ Replays with the same workflowRunId return the original run. No second charge.`;
     void refresh();
   };
 
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    setLoadError(null);
+    try {
+      const response = await fetch("/api/agency/session", { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      router.replace("/agency/login");
+      router.refresh();
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Couldn't sign out. Try again.");
+      setSigningOut(false);
+    }
+  };
+
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClientName || !newClientAddress) return;
@@ -244,6 +264,26 @@ Replays with the same workflowRunId return the original run. No second charge.`;
             <Link href="/docs/n8n-broker" className="nav-link-subtle" style={{ fontSize: "0.875rem", color: "var(--ink-muted)" }}>
               n8n Docs
             </Link>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              aria-label="Sign out of agency workspace"
+              className="btn-quiet-action"
+              style={{
+                color: "var(--ink-muted)",
+                border: "1px solid var(--border)",
+                backgroundColor: "var(--surface)",
+                padding: "8px 12px",
+                borderRadius: 6,
+                fontSize: "0.8125rem",
+                fontWeight: 500,
+                cursor: signingOut ? "default" : "pointer",
+                opacity: signingOut ? 0.65 : 1,
+              }}
+            >
+              {signingOut ? "Signing out..." : "Sign out"}
+            </button>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
               className="btn-primary-action"
