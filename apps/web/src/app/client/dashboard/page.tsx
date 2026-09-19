@@ -552,7 +552,7 @@ function DashboardInner() {
                     margin: "2px 0 6px",
                   }}
                 >
-                  {balance !== null ? `$${balance.toFixed(6)}` : detail.credentialRegistered ? "unreadable" : "$0.000000"}
+                  {balance !== null ? `$${balance.toFixed(6)}` : detail.credentialRegistered ? "unavailable" : "$0.000000"}
                 </div>
                 <button
                   onClick={() => setShowTopUp(!showTopUp)}

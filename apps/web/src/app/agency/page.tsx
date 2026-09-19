@@ -543,7 +543,7 @@ Replays with the same workflowRunId return the original run. No second charge.`;
                           color: c.activatedBalance !== null ? "var(--success)" : "var(--ink-muted)",
                         }}
                       >
-                        {c.activatedBalance !== null ? `$${c.activatedBalance}` : c.credentialRegistered ? "unreadable" : "$0.000000"}
+                        {c.activatedBalance !== null ? `$${c.activatedBalance}` : c.credentialRegistered ? "unavailable" : "$0.000000"}
                       </td>
                       <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
                         ${c.activatedUsed ?? c.totalSpentUsd}

@@ -5,7 +5,7 @@ import type { ClientRow } from "@flowfuel/db";
 export interface LiveBalance {
   /** Null when the client has no usable credential or the gateway rejects it. */
   available: string | null;
-  /** Gateway lifetime consumption on this credential. Null when unreadable. */
+  /** Gateway lifetime consumption on this credential. Null when unavailable. */
   used: string | null;
   /** Why the balance could not be read. Omitted on success. */
   reason?: "no_credential" | "gateway_rejected";
