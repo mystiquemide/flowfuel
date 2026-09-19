@@ -455,7 +455,10 @@ confirmed transaction from an indexed Orbio balance.
 
 The recorded Client D proof includes a real vault refuel, `0.980294` USDG
 spent, `1.270873` CREDIT received, activation ID `273`, and the Client D wallet
-as beneficiary. [Refuel receipt](https://flowfuel.midelabs.xyz/api/runs/205e8989-e41b-42ee-97eb-c9e0f8ec5eb1/receipt) · [Refuel transaction](https://robin.etherscan.io/tx/0xc55f4c93e99e5afb15e6c80384a8c724f832b415242e8d2ba481060d305f714a)
+as beneficiary. The trigger run records the refuel and a later run records
+successful agent continuation after indexing. [Refuel receipt](https://flowfuel.midelabs.xyz/api/runs/205e8989-e41b-42ee-97eb-c9e0f8ec5eb1/receipt) · [Continuation receipt](https://flowfuel.midelabs.xyz/api/runs/02077a0a-5c8b-42b5-993d-d372f55ec15f/receipt) · [Refuel transaction](https://robin.etherscan.io/tx/0xc55f4c93e99e5afb15e6c80384a8c724f832b415242e8d2ba481060d305f714a)
+
+The deployed vault proof anchor is [FlowFuelRefuelVault](https://robin.etherscan.io/address/0x919Fbc43b5F59778e05E7Df872F130e75fB2C906), deployed in transaction [0x558d3a1f](https://robin.etherscan.io/tx/0x558d3a1fd87ed2068e12cdb8b33de9347154d46926a124326d4ae18edea93d98).
 
 The agency operates the agent. The client sets the budget. FlowFuel keeps it
 running.
@@ -476,6 +479,10 @@ running.
   tiny funds and a separate demo wallet. Do not deposit funds you cannot lose.
 - The trigger threshold is evaluated offchain from the live Orbio gateway. The
   reserve and spending limits are contract-enforced.
+- The Client D proof used a tiny `$1` reserve and a `$0.50` trigger. After the
+  first refuel, the remaining reserve is intentionally small and later blocked
+  checks use reduced refill values. This is proof state, not a production
+  funding recommendation.
 
 ---
 
