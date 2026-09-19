@@ -5,6 +5,8 @@ import type { ClientRow } from "@flowfuel/db";
 export interface LiveBalance {
   /** Null when the client has no usable credential or the gateway rejects it. */
   available: string | null;
+  /** Gateway lifetime consumption on this credential. Null when unreadable. */
+  used: string | null;
   /** Why the balance could not be read. Omitted on success. */
   reason?: "no_credential" | "gateway_rejected";
   readAt: string;
@@ -29,7 +31,7 @@ export async function liveActivatedBalance(input: {
   const readAt = new Date().toISOString();
   const { credential } = input;
   if (!credential) {
-    return { available: null, reason: "no_credential", readAt };
+    return { available: null, used: null, reason: "no_credential", readAt };
   }
   const aad: CredentialAad = {
     clientId: input.client.id,
@@ -47,8 +49,8 @@ export async function liveActivatedBalance(input: {
           credentialPreviouslyVerified: credential.verifiedAt != null,
         }),
     );
-    return { available: info.balance.available, readAt };
+    return { available: info.balance.available, used: info.balance.used, readAt };
   } catch {
-    return { available: null, reason: "gateway_rejected", readAt };
+    return { available: null, used: null, reason: "gateway_rejected", readAt };
   }
 }

@@ -58,7 +58,7 @@ export async function GET(): Promise<Response> {
             credential,
           }),
           runs.listByClient(client.id, 1),
-          runs.sumSucceededCost(client.id),
+          runs.sumChargedCost(client.id),
           activations.latestForClient(client.id),
         ]);
         return {
@@ -71,6 +71,7 @@ export async function GET(): Promise<Response> {
           credentialRegistered: credential !== null,
           epoch: credential?.epoch ?? null,
           activatedBalance: balance.available,
+          activatedUsed: balance.used,
           balanceReadAt: balance.readAt,
           balanceUnavailableReason: balance.reason ?? null,
           totalSpentUsd: totalSpent.toFixed(6),

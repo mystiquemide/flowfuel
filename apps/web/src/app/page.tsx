@@ -11,6 +11,7 @@ interface LiveClient {
   walletAddress: string;
   status: string;
   activatedBalance: string | null;
+  activatedUsed: string | null;
   totalSpentUsd: string;
 }
 
@@ -496,8 +497,8 @@ export default function Home() {
                       <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
                         {client.activatedBalance !== null ? `$${client.activatedBalance}` : "n/a"}
                       </td>
-                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: Number(client.totalSpentUsd) > 0 ? "var(--danger)" : "var(--ink-muted)" }}>
-                        -${client.totalSpentUsd}
+                      <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)", color: Number(client.activatedUsed ?? client.totalSpentUsd) > 0 ? "var(--danger)" : "var(--ink-muted)" }}>
+                        -${client.activatedUsed ?? client.totalSpentUsd}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
                         <span

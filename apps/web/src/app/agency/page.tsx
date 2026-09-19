@@ -15,6 +15,7 @@ interface ApiClient {
   credentialRegistered: boolean;
   epoch: number | null;
   activatedBalance: string | null;
+  activatedUsed: string | null;
   balanceReadAt: string;
   balanceUnavailableReason: string | null;
   totalSpentUsd: string;
@@ -545,7 +546,7 @@ Replays with the same workflowRunId return the original run. No second charge.`;
                         {c.activatedBalance !== null ? `$${c.activatedBalance}` : c.credentialRegistered ? "unreadable" : "$0.000000"}
                       </td>
                       <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", color: "var(--ink)" }}>
-                        ${c.totalSpentUsd}
+                        ${c.activatedUsed ?? c.totalSpentUsd}
                       </td>
                       <td style={{ padding: "12px 12px" }}>
                         <span

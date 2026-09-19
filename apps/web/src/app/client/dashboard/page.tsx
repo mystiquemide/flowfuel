@@ -28,6 +28,7 @@ interface ClientDetail {
   credentialRegistered: boolean;
   epoch: number | null;
   activatedBalance: string | null;
+  activatedUsed: string | null;
   balanceReadAt: string;
   balanceUnavailableReason: string | null;
   transferableCreditUnits: string | null;
@@ -248,7 +249,11 @@ function DashboardInner() {
   const balance = detail?.activatedBalance !== null && detail?.activatedBalance !== undefined
     ? Number(detail.activatedBalance)
     : null;
-  const spent = detail ? Number(detail.totalSpentUsd) : 0;
+  const spent = detail
+    ? detail.activatedUsed !== null
+      ? Number(detail.activatedUsed)
+      : Number(detail.totalSpentUsd)
+    : 0;
   const status = detail ? STATUS_LABEL[detail.status] ?? { label: detail.status.toUpperCase(), color: "var(--ink-muted)" } : null;
   const cap = balance !== null ? balance + spent : spent;
 
@@ -763,7 +768,7 @@ function DashboardInner() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
                 <span style={{ fontSize: "0.9375rem", fontWeight: 550, color: "var(--ink)" }}>Activated vs spent</span>
                 <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--ink-muted)" }}>
-                  Activated + spent: ${cap.toFixed(6)}
+                  Activated total: ${cap.toFixed(6)}
                 </span>
               </div>
 

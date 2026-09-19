@@ -55,7 +55,7 @@ export async function GET(
           credential,
         }),
         creditBalanceOf(client.walletAddress).catch(() => null),
-        runs.sumSucceededCost(client.id),
+        runs.sumChargedCost(client.id),
         activations.latestForClient(client.id),
         runs.listByClient(client.id, 20),
       ]);
@@ -71,6 +71,7 @@ export async function GET(
       epoch: credential?.epoch ?? null,
       verifiedBalance: credential?.verifiedBalance ?? null,
       activatedBalance: balance.available,
+      activatedUsed: balance.used,
       balanceReadAt: balance.readAt,
       balanceUnavailableReason: balance.reason ?? null,
       transferableCreditUnits: transferable?.toString() ?? null,

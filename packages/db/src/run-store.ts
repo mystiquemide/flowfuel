@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { isUniqueViolation } from "./client-store";
 import { runs, type RunRow } from "./schema";
@@ -104,11 +104,16 @@ export function createRunStore(db: Db) {
       return query;
     },
 
-    async sumSucceededCost(clientId: string): Promise<number> {
+    /**
+     * Total real spend for the client: every run that produced a charge,
+     * regardless of terminal status. A reconciliation_failed run still moved
+     * money off the balance, so it counts toward what the client spent.
+     */
+    async sumChargedCost(clientId: string): Promise<number> {
       const rows = await db
         .select({ total: sql<string>`coalesce(sum(${runs.costUsd}), 0)` })
         .from(runs)
-        .where(and(eq(runs.clientId, clientId), eq(runs.status, "succeeded")));
+        .where(and(eq(runs.clientId, clientId), isNotNull(runs.costUsd)));
       return Number(rows[0]?.total ?? 0);
     },
 

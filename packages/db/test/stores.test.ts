@@ -162,6 +162,41 @@ describe("run store", () => {
     expect(fresh?.status).toBe("succeeded");
     expect(fresh?.generationId).toBe("gen-1");
   });
+
+  it("sumChargedCost counts every run that produced a charge", async () => {
+    const c = await makeClient("acme-labs", WALLET_A);
+    const make = (key: string) =>
+      runStore.create({
+        clientId: c.id,
+        workflowRunId: `exec-${key}`,
+        taskType: "lead_summary",
+        model: "google/gemini-2.5-flash",
+        taskHash: "a".repeat(64),
+        idempotencyKey: key.padEnd(64, "0"),
+      });
+
+    const ok = await make("ok");
+    await runStore.complete(ok.id, {
+      status: "succeeded",
+      costUsd: "0.000100",
+      upstreamStatus: 200,
+    });
+
+    const failed = await make("failed");
+    await runStore.complete(failed.id, {
+      status: "reconciliation_failed",
+      costUsd: "0.000085",
+      upstreamStatus: 200,
+    });
+
+    const free = await make("free");
+    await runStore.complete(free.id, {
+      status: "client_unfunded",
+      upstreamStatus: 401,
+    });
+
+    expect(await runStore.sumChargedCost(c.id)).toBeCloseTo(0.000185, 6);
+  });
 });
 
 describe("nonce store", () => {
