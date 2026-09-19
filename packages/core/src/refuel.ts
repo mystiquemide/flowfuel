@@ -169,12 +169,13 @@ export const refuelExecutionStatusSchema = z.enum([
 export type RefuelExecutionStatus = z.infer<typeof refuelExecutionStatusSchema>;
 
 export const refuelEvidenceSchema = z.strictObject({
-  transactionHash: transactionHashSchema,
+  transactionHash: transactionHashSchema.nullable(),
   beneficiary: walletAddressSchema,
-  usdgSpent: decimalStringSchema,
-  creditOut: decimalStringSchema,
-  activationId: z.string().regex(/^\d+$/),
+  usdgSpent: decimalStringSchema.nullable(),
+  creditOut: decimalStringSchema.nullable(),
+  activationId: z.string().regex(/^\d+$/).nullable(),
   status: refuelExecutionStatusSchema,
+  errorCode: z.string().max(64).nullable().default(null),
 });
 export type RefuelEvidence = z.infer<typeof refuelEvidenceSchema>;
 

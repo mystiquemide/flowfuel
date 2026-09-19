@@ -432,22 +432,33 @@ docs/
 
 ---
 
-## Future direction
+## Self-funding agents
 
-The next protocol-native step is **policy-controlled autonomous refueling**.
+FlowFuel now supports a client-owned, withdrawable USDG reserve for bounded
+autonomous refueling.
 
-A client could authorize a bounded rule such as:
+When FlowFuel detects that a client's live Orbio inference balance has fallen
+below the configured threshold, the runtime can request a refuel through
+Orbio's Exchange. The `FlowFuelRefuelVault` contract enforces:
 
-```text
-if inference balance < $0.50
-and weekly refuel spend < $2
-→ acquire and activate CREDIT
-→ continue work
-```
+- authorized keeper
+- fixed client beneficiary
+- refill amount
+- weekly spending cap
+- available reserve
+- maximum slippage
 
-That is intentionally **not shipped yet**. FlowFuel currently does not give the runtime unrestricted automated USDG spending authority.
+Unused USDG remains the client's and can be withdrawn. The threshold is
+evaluated from live Orbio gateway state. Spending limits are enforced onchain.
+Exchange activation can index asynchronously, so FlowFuel distinguishes a
+confirmed transaction from an indexed Orbio balance.
 
-The broader direction is to make client-funded agent infrastructure reusable across many agent workloads while keeping the payer boundary enforceable outside the model.
+The recorded Client D proof includes a real vault refuel, `0.980294` USDG
+spent, `1.270873` CREDIT received, activation ID `273`, and the Client D wallet
+as beneficiary. [Refuel receipt](https://flowfuel.midelabs.xyz/api/runs/205e8989-e41b-42ee-97eb-c9e0f8ec5eb1/receipt) · [Refuel transaction](https://robin.etherscan.io/tx/0xc55f4c93e99e5afb15e6c80384a8c724f832b415242e8d2ba481060d305f714a)
+
+The agency operates the agent. The client sets the budget. FlowFuel keeps it
+running.
 
 ---
 
@@ -461,7 +472,10 @@ The broader direction is to make client-funded agent infrastructure reusable acr
 - Exchange-path activation can take time to appear in the gateway index.
 - The destructive live revoke path is unit-tested but has not been exercised end-to-end against the canonical demo clients.
 - Server-side Orbio web search was not available through the current wallet-gateway path, so the reference agent uses a constrained client-side website tool.
-- Autonomous refueling is future work, not a current product claim.
+- Autonomous refueling is unaudited hackathon software. The Client D proof uses
+  tiny funds and a separate demo wallet. Do not deposit funds you cannot lose.
+- The trigger threshold is evaluated offchain from the live Orbio gateway. The
+  reserve and spending limits are contract-enforced.
 
 ---
 

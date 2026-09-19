@@ -35,20 +35,17 @@ export async function GET(
     const client = await deps.clients.getById(run.clientId);
     if (!client) throw new FlowFuelError("NOT_FOUND", "Unknown client");
     const refuelRow = await deps.refuels?.getByRunId(id);
-    const refuel =
-      refuelRow?.transactionHash &&
-      refuelRow.usdgSpent &&
-      refuelRow.creditOut &&
-      refuelRow.activationId
-        ? {
-            transactionHash: refuelRow.transactionHash,
-            beneficiary: walletAddressSchema.parse(refuelRow.beneficiaryAddress),
-            usdgSpent: unitsToDecimal(BigInt(refuelRow.usdgSpent)),
-            creditOut: unitsToDecimal(BigInt(refuelRow.creditOut)),
-            activationId: refuelRow.activationId,
-            status: refuelRow.status,
-          }
-        : null;
+    const refuel = refuelRow
+      ? {
+          transactionHash: refuelRow.transactionHash,
+          beneficiary: walletAddressSchema.parse(refuelRow.beneficiaryAddress),
+          usdgSpent: refuelRow.usdgSpent ? unitsToDecimal(BigInt(refuelRow.usdgSpent)) : null,
+          creditOut: refuelRow.creditOut ? unitsToDecimal(BigInt(refuelRow.creditOut)) : null,
+          activationId: refuelRow.activationId,
+          status: refuelRow.status,
+          errorCode: refuelRow.errorCode,
+        }
+      : null;
 
     const source: ReceiptSource = {
       id: run.id,

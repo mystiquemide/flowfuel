@@ -53,12 +53,13 @@ interface PublicReceipt {
   completedAt: string | null;
   source: "recorded_live_execution";
   refuel: {
-    transactionHash: string;
+    transactionHash: string | null;
     beneficiary: string;
-    usdgSpent: string;
-    creditOut: string;
-    activationId: string;
+    usdgSpent: string | null;
+    creditOut: string | null;
+    activationId: string | null;
     status: string;
+    errorCode: string | null;
   } | null;
 }
 
@@ -209,6 +210,9 @@ function ProofInner() {
   const funded = orderedRuns.find((r) => r.status === "succeeded" && r.clientName === "Client A")
     ?? orderedRuns.find((r) => r.status === "succeeded");
   const blocked = orderedRuns.find((r) => r.status !== "succeeded" && r.status !== "running");
+  const autonomousRefuel = orderedRuns
+    .map((run) => ({ run, refuel: pair?.receipts[run.runId]?.refuel ?? null }))
+    .find((item) => item.refuel !== null);
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--canvas)", color: "var(--ink)" }}>
@@ -637,6 +641,52 @@ function ProofInner() {
                 </table>
               </div>
             </div>
+
+            {autonomousRefuel?.refuel && (
+              <section
+                style={{
+                  border: "1px solid rgba(214, 255, 85, 0.35)",
+                  borderRadius: 8,
+                  backgroundColor: "var(--surface)",
+                  padding: "20px 22px",
+                  marginBottom: 28,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
+                  <div>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", color: "var(--fuel)", letterSpacing: "0.05em", fontWeight: 600 }}>
+                      RECORDED LIVE REFUEL
+                    </span>
+                    <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "4px 0 4px", color: "var(--ink)" }}>
+                      Self-funding agent evidence
+                    </h2>
+                    <p style={{ margin: 0, color: "var(--ink-muted)", fontSize: "0.8125rem", lineHeight: 1.5 }}>
+                      Threshold evaluation came from live Orbio gateway state. The reserve and spending boundary came from the vault.
+                    </p>
+                  </div>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", color: "var(--success)", border: "1px solid rgba(102, 209, 158, 0.4)", borderRadius: 4, padding: "4px 8px" }}>
+                    {autonomousRefuel.refuel.status}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 16, fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                  <div><span style={{ color: "var(--ink-muted)" }}>Trigger balance</span><br />${autonomousRefuel.run.balanceBefore ?? "n/a"}</div>
+                  <div><span style={{ color: "var(--ink-muted)" }}>USDG spent</span><br />{autonomousRefuel.refuel.usdgSpent ?? "0.000000"} USDG</div>
+                  <div><span style={{ color: "var(--ink-muted)" }}>CREDIT received</span><br />{autonomousRefuel.refuel.creditOut ?? "0.000000"} CREDIT</div>
+                  <div><span style={{ color: "var(--ink-muted)" }}>Activation ID</span><br />{autonomousRefuel.refuel.activationId ? `#${autonomousRefuel.refuel.activationId}` : "none"}</div>
+                  <div><span style={{ color: "var(--ink-muted)" }}>Beneficiary</span><br />{truncateMiddle(autonomousRefuel.refuel.beneficiary, 10, 8)}</div>
+                  <div><span style={{ color: "var(--ink-muted)" }}>Agent run</span><br />{autonomousRefuel.run.status} · ${autonomousRefuel.run.costUsd ?? "0.000000"}</div>
+                </div>
+                {autonomousRefuel.refuel.transactionHash ? (
+                  <a href={`https://robin.etherscan.io/tx/${autonomousRefuel.refuel.transactionHash}`} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 16, color: "var(--link)", fontFamily: "var(--font-mono)", fontSize: "0.75rem", textDecoration: "underline" }}>
+                    Refuel transaction {truncateMiddle(autonomousRefuel.refuel.transactionHash, 12, 8)} ↗
+                  </a>
+                ) : (
+                  <div style={{ marginTop: 16, color: "var(--warning)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                    No Exchange transaction. Policy blocked the refill and no fallback funding was used.
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* Onchain Evidence */}
             <div

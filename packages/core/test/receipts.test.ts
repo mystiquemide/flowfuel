@@ -62,6 +62,7 @@ describe("toPublicReceipt", () => {
         creditOut: "1.400560",
         activationId: "241",
         status: "indexed",
+        errorCode: null,
       },
     });
     expect(receipt.refuel?.transactionHash).toBe(TX);
@@ -82,6 +83,7 @@ describe("toPublicReceipt", () => {
         creditOut: "0.001000",
         activationId: "241",
         status: "indexed",
+        errorCode: null,
       },
     });
     expect(receipt.reconciled).toBe(true);
