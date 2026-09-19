@@ -30,9 +30,10 @@ Orbio turns inference into a wallet-funded onchain resource. FlowFuel uses that 
 
 ![Live isolation proof: funded Client A succeeds, unfunded Client B is blocked at the gateway](docs/proof.png)
 
-- Same n8n workflow, same task hash `d9f8e86a…df1878`, two wallet identities.
-- Client A (funded): run succeeded, real Orbio generation ID `gen-1789764124-zDWN726GvyqIjnwlEzKL`, exactly `$0.000108` drawn from A's balance. [Receipt](https://flowfuel.midelabs.xyz/api/runs/4b1a2430-eaac-4dc8-9e23-870e55e0b6f4/receipt)
-- Client B (unfunded): `HTTP 401`, no generation ID, no charge, no fallback to any other balance. [Receipt](https://flowfuel.midelabs.xyz/api/runs/99181d0b-80c6-46f8-a1a0-4657a0d42846/receipt)
+- Same n8n Lead Intelligence Agent, same task hash `7334a697…e013e`, three wallet identities.
+- Client A (funded): two real Orbio generations completed, exactly `$0.000065` charged, balance `$0.008412 → $0.008348`. [Receipt](https://flowfuel.midelabs.xyz/api/runs/505513c6-4303-4a3a-a14e-9a39111fc13b/receipt)
+- Client B (unfunded): `HTTP 401`, no generation ID, no charge, no fallback to any other balance. [Receipt](https://flowfuel.midelabs.xyz/api/runs/dbf5263e-0ef4-42d6-9d0c-e004b44ec54c/receipt)
+- Client C (funded through `buyAndActivate`): the same agent completed with two generations and a `$0.000074` charge. [Receipt](https://flowfuel.midelabs.xyz/api/runs/e50a5419-328f-49b6-9aaa-9c70f0497d9f/receipt)
 - A task priced above the balance: `HTTP 402`, nothing charged. [Receipt](https://flowfuel.midelabs.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt)
 - Client C self-funded with USDG through the Orbio exchange's `buyAndActivate`, wallet as beneficiary. [Tx](https://robin.etherscan.io/tx/0x9e47efc19a22fb21d8e1bcc8ee1ad3759b2a88932bc269c9a4c7f94c3a50f8f9)
 - Every number above resolves from the live gateway or the public explorer, not from this README.
@@ -86,8 +87,9 @@ flowchart LR
 
 | Artifact | Value | Link |
 |---|---|---|
-| Funded run receipt | `succeeded`, HTTP 200, $0.009088 - $0.000108 = $0.008980, reconciled | [receipt](https://flowfuel.midelabs.xyz/api/runs/4b1a2430-eaac-4dc8-9e23-870e55e0b6f4/receipt) |
-| Unfunded run receipt | `client_unfunded`, HTTP 401, zero cost, zero fallback | [receipt](https://flowfuel.midelabs.xyz/api/runs/99181d0b-80c6-46f8-a1a0-4657a0d42846/receipt) |
+| Funded agent receipt | Client A `succeeded`, two generations, $0.008412 - $0.000065 ≈ $0.008348, reconciled | [receipt](https://flowfuel.midelabs.xyz/api/runs/505513c6-4303-4a3a-a14e-9a39111fc13b/receipt) |
+| Unfunded agent receipt | Client B `client_unfunded`, HTTP 401, zero generations, zero cost, zero fallback | [receipt](https://flowfuel.midelabs.xyz/api/runs/dbf5263e-0ef4-42d6-9d0c-e004b44ec54c/receipt) |
+| Protocol-funded agent receipt | Client C `succeeded`, two generations, $0.000074 total cost | [receipt](https://flowfuel.midelabs.xyz/api/runs/e50a5419-328f-49b6-9aaa-9c70f0497d9f/receipt) |
 | Over-quota run receipt | `402 insufficient_quota`, balance unchanged | [receipt](https://flowfuel.midelabs.xyz/api/runs/b2996733-816d-4748-a7fd-20759c940e7a/receipt) |
 | Client A activation | `activate()` tx, beneficiary = A's wallet | [explorer](https://robin.etherscan.io/tx/0x229f5abb3baae5a1a104c4c6f294fdde05172885493fadf85f1aebfb7a4b40ed) |
 | Client C direct activation | `activate()` tx, activation ID 239 | [explorer](https://robin.etherscan.io/tx/0x3654d2b614f4f62977ecf7059f99be021d6c1c27076325d077b4101fc1889889) |
