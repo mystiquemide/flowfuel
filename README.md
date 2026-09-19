@@ -131,7 +131,7 @@ Start n8n with `docker compose up -d n8n`, then import `n8n/workflows/client-fun
 
 ## Architecture
 
-FlowFuel places an encrypted credential broker between n8n and Orbio. n8n sends a client ID and a task; the broker resolves that client's credential, reads that client's activated balance, executes, reconciles, and returns a secret-free receipt. Detail lives in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DESIGN.md](docs/DESIGN.md). Layout: `apps/web` (Next.js app), `apps/broker` (run broker), `packages/core` (schemas, encryption, receipts, contract ABIs), `packages/db` (stores), `n8n/workflows` (importable reference workflow).
+FlowFuel places an encrypted credential broker between n8n and Orbio. n8n sends a client ID and a task; the broker resolves that client's credential, reads that client's activated balance, executes, reconciles, and returns a secret-free receipt. Detail lives in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Layout: `apps/web` (Next.js app), `apps/broker` (run broker), `packages/core` (schemas, encryption, receipts, contract ABIs), `packages/db` (stores), `n8n/workflows` (importable reference workflow).
 
 ## License
 

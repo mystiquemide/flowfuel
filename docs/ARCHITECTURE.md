@@ -166,7 +166,6 @@ flowfuel/
     workflows/client-funded-agent.json
   docs/
     ARCHITECTURE.md
-    DESIGN.md
   .env.example
   README.md
 ```
