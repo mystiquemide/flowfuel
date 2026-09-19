@@ -163,6 +163,24 @@ FlowFuel separates **operational ownership** from **economic ownership**.
 
 ---
 
+## Integrations
+
+FlowFuel combines agent infrastructure, workflow automation, and Orbio's programmable inference economy into one client-funded runtime.
+
+| Integration | How FlowFuel uses it |
+|---|---|
+| **Orbio** | Provides wallet-funded inference, wallet-derived credentials, generation accounting, and live inference balances. |
+| **Orbio Exchange** | Quotes and converts client-owned USDG into CREDIT through `getQuote()` and `buyAndActivate()`. |
+| **CREDIT** | Acts as the inference fuel consumed by each client's agent executions. |
+| **USDG** | Funds client-owned reserves and bounded autonomous refueling. |
+| **Robinhood Chain** | Hosts the Orbio contracts and FlowFuel's `FlowFuelRefuelVault`. |
+| **n8n** | Runs the shared automation workflow while FlowFuel determines which client's economic identity funds each execution. |
+| **FlowFuelRefuelVault** | Enforces each client's beneficiary, refill amount, weekly cap, available reserve, and maximum slippage onchain. |
+
+**The important distinction:** n8n owns workflow orchestration, FlowFuel owns client isolation and agent runtime policy, and Orbio provides the programmable inference economy.
+
+---
+
 ## 30-second proof
 
 ![Recorded live isolation proof: funded Client A succeeds, unfunded Client B is blocked at the gateway](docs/proof.png)
