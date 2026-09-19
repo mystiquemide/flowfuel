@@ -189,10 +189,10 @@ export default function ProofPage() {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                backgroundColor: "var(--surface)",
-                color: "var(--ink)",
+                backgroundColor: "transparent",
+                color: "var(--ink-muted)",
                 border: "1px solid var(--border)",
-                padding: "6px 14px",
+                padding: "6px 13px",
                 borderRadius: 5,
                 fontSize: "0.8125rem",
                 fontWeight: 500,
@@ -229,7 +229,7 @@ export default function ProofPage() {
           </div>
           <span style={{ color: "var(--border)" }}>·</span>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--danger)", fontWeight: 500 }}>
-            <span>✓</span>
+            <span style={{ fontSize: "0.75rem" }}>✕</span>
             <span>Client B blocked</span>
           </div>
           <span style={{ color: "var(--border)" }}>·</span>
@@ -264,9 +264,41 @@ export default function ProofPage() {
             <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: "var(--ink)" }}>
               Two-Client Execution Comparison
             </h2>
-            <p style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
-              Both branches called with identical task payload: sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1
-            </p>
+            <div style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span>Both branches called with identical task payload:</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <code
+                  title="sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1"
+                  style={{
+                    fontSize: "0.6875rem",
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--ink-muted)",
+                    backgroundColor: "var(--canvas)",
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  sha256:7f83b1...416fd1
+                </code>
+                <button
+                  type="button"
+                  onClick={() => handleCopy("sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: "0 2px",
+                    cursor: "pointer",
+                    color: copiedHash === "sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1" ? "var(--success)" : "var(--ink-muted)",
+                    fontSize: "0.6875rem",
+                    fontFamily: "var(--font-mono)",
+                    textDecoration: "underline",
+                  }}
+                >
+                  {copiedHash === "sha256:7f83b1652796e67e58a2e5793ec920b75960c181db8bf0b2fe46d84a75416fd1" ? "Copied" : "Copy"}
+                </button>
+              </span>
+            </div>
           </div>
 
           <div style={{ overflowX: "auto" }}>
@@ -554,7 +586,7 @@ export default function ProofPage() {
         {/* Footer Subtext */}
         <div style={{ textAlign: "center", paddingTop: 8 }}>
           <p style={{ fontSize: "0.6875rem", color: "var(--ink-subtle)", fontFamily: "var(--font-mono)", margin: 0 }}>
-            Verified live · Robinhood Chain 4663 · Orbio Gateway · All transactions cryptographically verified onchain
+            Verified live · Robinhood Chain 4663 · Orbio Gateway · All listed artifacts are verifiable onchain
           </p>
         </div>
       </main>
