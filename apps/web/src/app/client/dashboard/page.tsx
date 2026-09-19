@@ -177,7 +177,7 @@ export default function ClientDashboardPage() {
           {/* Available Balance Card */}
           <div
             style={{
-              padding: "13px 18px",
+              padding: "11px 16px",
               border: "1px solid var(--border)",
               borderRadius: 8,
               backgroundColor: "var(--surface)",
@@ -192,7 +192,7 @@ export default function ClientDashboardPage() {
                 fontWeight: 600,
                 fontFamily: "var(--font-mono)",
                 color: "var(--success)",
-                margin: "3px 0 8px",
+                margin: "2px 0 6px",
               }}
             >
               ${balance.toFixed(6)}
@@ -204,11 +204,12 @@ export default function ClientDashboardPage() {
                 backgroundColor: "var(--fuel)",
                 color: "#ffffff",
                 border: "none",
-                padding: "5px 12px",
+                padding: "3px 10px",
                 borderRadius: 5,
-                fontSize: "0.78125rem",
+                fontSize: "0.75rem",
                 fontWeight: 500,
                 cursor: "pointer",
+                lineHeight: 1.35,
               }}
             >
               + Top Up Allowance
@@ -218,7 +219,7 @@ export default function ClientDashboardPage() {
           {/* Total Spent Card */}
           <div
             style={{
-              padding: "13px 18px",
+              padding: "11px 16px",
               border: "1px solid var(--border)",
               borderRadius: 8,
               backgroundColor: "var(--surface)",
@@ -233,7 +234,7 @@ export default function ClientDashboardPage() {
                 fontWeight: 600,
                 fontFamily: "var(--font-mono)",
                 color: "var(--ink)",
-                margin: "3px 0 6px",
+                margin: "2px 0 4px",
               }}
             >
               ${used.toFixed(6)}
@@ -246,7 +247,7 @@ export default function ClientDashboardPage() {
           {/* Allowance Status Card */}
           <div
             style={{
-              padding: "13px 18px",
+              padding: "11px 16px",
               border: "1px solid var(--border)",
               borderRadius: 8,
               backgroundColor: "var(--surface)",
@@ -261,7 +262,7 @@ export default function ClientDashboardPage() {
                 fontWeight: 600,
                 fontFamily: "var(--font-mono)",
                 color: isPaused ? "var(--warning)" : "var(--success)",
-                margin: "5px 0 6px",
+                margin: "4px 0 4px",
               }}
             >
               {isPaused ? "PAUSED" : "ACTIVE & FUNDED"}
@@ -274,28 +275,35 @@ export default function ClientDashboardPage() {
                   background: "none",
                   border: "none",
                   padding: 0,
-                  color: "var(--ink-subtle)",
-                  fontSize: "0.6875rem",
+                  color: "var(--ink-muted)",
+                  fontSize: "0.75rem",
                   cursor: "pointer",
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 4,
+                  gap: 6,
                   fontFamily: "var(--font-mono)",
+                  fontWeight: 500,
                 }}
               >
                 <svg
-                  width="10"
-                  height="10"
+                  width="12"
+                  height="12"
                   viewBox="0 0 12 12"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
                   style={{
                     transform: showKeyDetails ? "rotate(90deg)" : "rotate(0deg)",
-                    transition: "transform 140ms var(--ease-out-cubic)",
+                    transition: "transform 160ms var(--ease-out-cubic)",
                     flexShrink: 0,
                   }}
                 >
-                  <path d="M4.5 2.5L8 6L4.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path
+                    d="M4.5 2.5L8 6L4.5 9.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 <span>{showKeyDetails ? "Hide technical details" : "View technical details"}</span>
               </button>
