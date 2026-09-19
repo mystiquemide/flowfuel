@@ -91,6 +91,20 @@ export function ConnectFlow(props: ConnectFlowProps) {
     }
   }
 
+  async function disconnectWallet() {
+    const eth = provider();
+    setAccount(null);
+    setStep({ kind: "idle" });
+    try {
+      await eth?.request({
+        method: "wallet_revokePermissions",
+        params: [{ eth_accounts: {} }],
+      });
+    } catch {
+      // Wallets without revokePermissions still get their local state cleared.
+    }
+  }
+
   async function verifyWallet() {
     if (!account) return;
     const eth = provider();
@@ -170,9 +184,14 @@ export function ConnectFlow(props: ConnectFlowProps) {
           Expected wallet {props.walletAddress}
         </p>
         {account ? (
-          <p style={{ ...mono, color: walletMismatch ? "var(--danger)" : "var(--success)", margin: 0 }}>
-            {walletMismatch ? `Connected ${account} does not match` : `Connected ${account}`}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <p style={{ ...mono, color: walletMismatch ? "var(--danger)" : "var(--success)", margin: 0 }}>
+              {walletMismatch ? `Connected ${account} does not match` : `Connected ${account}`}
+            </p>
+            <button style={{ ...button, padding: "4px 10px", fontSize: "0.75rem" }} onClick={disconnectWallet}>
+              Disconnect
+            </button>
+          </div>
         ) : (
           <button style={button} onClick={connectWallet}>Connect wallet</button>
         )}
@@ -193,34 +212,52 @@ export function ConnectFlow(props: ConnectFlowProps) {
         <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 12px" }}>
           3 · {props.hasCredential ? "Rotate Orbio credential" : "Register Orbio credential"}
         </h2>
-        <p style={{ color: "var(--ink-muted)", fontSize: "0.875rem", lineHeight: 1.55, margin: "0 0 12px" }}>
-          Your wallet signs the Orbio key message locally and the derived
-          credential is encrypted by FlowFuel. It can spend only your activated
-          balance. Activate CREDIT for this wallet before registering.
-        </p>
-        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: "0.875rem", color: "var(--ink)", marginBottom: 12 }}>
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
-          <span>I understand this credential can spend my activated Orbio balance and I consent to registering it with FlowFuel.</span>
-        </label>
-        {props.hasCredential && (
-          <label style={{ ...mono, display: "block", color: "var(--ink-muted)", marginBottom: 12 }}>
-            New epoch{" "}
-            <input
-              type="number"
-              min={0}
-              value={epoch}
-              onChange={(e) => setEpoch(Number(e.target.value))}
-              style={{ width: 72, background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink)", padding: "4px 8px" }}
-            />
-          </label>
+        {step.kind === "done" ? (
+          <>
+            <p style={{ ...mono, color: step.status === "ready" ? "var(--success)" : "var(--warning)", margin: "0 0 12px" }}>
+              {step.status === "ready"
+                ? `Credential registered · activated balance $${step.balance}`
+                : "Credential unfunded · activate CREDIT for this wallet, then register again"}
+            </p>
+            <a
+              href={step.status === "ready" ? `/client/dashboard?client=${props.clientId}` : `/client/onboard?client=${props.clientId}`}
+              style={{ ...mono, color: "var(--ink)", textDecoration: "underline" }}
+            >
+              {step.status === "ready" ? "Open client dashboard →" : "Activate CREDIT →"}
+            </a>
+          </>
+        ) : (
+          <>
+            <p style={{ color: "var(--ink-muted)", fontSize: "0.875rem", lineHeight: 1.55, margin: "0 0 12px" }}>
+              Your wallet signs the Orbio key message locally and the derived
+              credential is encrypted by FlowFuel. It can spend only your activated
+              balance. Activate CREDIT for this wallet before registering.
+            </p>
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: "0.875rem", color: "var(--ink)", marginBottom: 12 }}>
+              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
+              <span>I understand this credential can spend my activated Orbio balance and I consent to registering it with FlowFuel.</span>
+            </label>
+            {props.hasCredential && (
+              <label style={{ ...mono, display: "block", color: "var(--ink-muted)", marginBottom: 12 }}>
+                New epoch{" "}
+                <input
+                  type="number"
+                  min={0}
+                  value={epoch}
+                  onChange={(e) => setEpoch(Number(e.target.value))}
+                  style={{ width: 72, background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink)", padding: "4px 8px" }}
+                />
+              </label>
+            )}
+            <button
+              style={{ ...button, opacity: consent && step.kind !== "working" && !walletMismatch ? 1 : 0.4 }}
+              disabled={!consent || step.kind === "working" || Boolean(account && walletMismatch)}
+              onClick={registerCredential}
+            >
+              {props.hasCredential ? "Rotate credential" : "Register credential"}
+            </button>
+          </>
         )}
-        <button
-          style={{ ...button, opacity: consent && step.kind !== "working" && !walletMismatch ? 1 : 0.4 }}
-          disabled={!consent || step.kind === "working" || Boolean(account && walletMismatch)}
-          onClick={registerCredential}
-        >
-          {props.hasCredential ? "Rotate credential" : "Register credential"}
-        </button>
       </section>
 
       {step.kind === "working" && (
@@ -228,19 +265,6 @@ export function ConnectFlow(props: ConnectFlowProps) {
       )}
       {step.kind === "error" && (
         <p style={{ ...mono, color: "var(--danger)" }}>{step.message}</p>
-      )}
-      {step.kind === "done" && (
-        <section style={{ ...card, borderColor: step.status === "ready" ? "var(--success)" : "var(--warning)" }}>
-          {step.status === "ready" ? (
-            <p style={{ ...mono, color: "var(--success)", margin: 0 }}>
-              Credential registered · activated balance ${step.balance}
-            </p>
-          ) : (
-            <p style={{ ...mono, color: "var(--warning)", margin: 0 }}>
-              Credential unfunded · activate CREDIT for this wallet, then register again
-            </p>
-          )}
-        </section>
       )}
     </div>
   );

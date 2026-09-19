@@ -4,12 +4,13 @@ import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getAddress } from "viem";
-import { ROBINHOOD_CHAIN_ID } from "@flowfuel/core";
+import { ROBINHOOD_CHAIN_ID, explorerTxUrl } from "@flowfuel/core";
 import { FlowFuelLogo } from "@/components/flowfuel-logo";
 import {
   activateCredit,
   connectInjected,
   injectedChainId,
+  injectedProvider,
   issueNonce,
   readApiError,
   requestRobinhoodChain,
@@ -139,6 +140,21 @@ function DashboardInner() {
       setPhase({ kind: "idle" });
     } catch (err) {
       setPhase({ kind: "error", message: err instanceof Error ? err.message : "Couldn't connect the wallet. Try again." });
+    }
+  }
+
+  async function handleDisconnect() {
+    const eth = injectedProvider();
+    setAccount(null);
+    setChainId(null);
+    setPhase({ kind: "idle" });
+    try {
+      await eth?.request({
+        method: "wallet_revokePermissions",
+        params: [{ eth_accounts: {} }],
+      });
+    } catch {
+      // Wallets without revokePermissions still get their local state cleared.
     }
   }
 
@@ -512,13 +528,21 @@ function DashboardInner() {
                 >
                   Switch to Robinhood Chain 4663
                 </button>
+              ) : account ? (
+                <button
+                  onClick={() => void handleDisconnect()}
+                  className="btn-quiet-action"
+                  style={{ padding: "5px 12px", borderRadius: 5, fontSize: "0.75rem", cursor: "pointer" }}
+                >
+                  Disconnect
+                </button>
               ) : (
                 <button
                   onClick={() => void handleConnect()}
                   className="btn-quiet-action"
                   style={{ padding: "5px 12px", borderRadius: 5, fontSize: "0.75rem", cursor: "pointer" }}
                 >
-                  {account ? "Reconnect" : "Connect Wallet"}
+                  Connect Wallet
                 </button>
               )}
             </div>
@@ -674,7 +698,15 @@ function DashboardInner() {
                       {detail.latestActivation && (
                         <>
                           <br />
-                          Activation: {truncateMiddle(detail.latestActivation.transactionHash, 10, 8)}
+                          Activation:{" "}
+                          <a
+                            href={explorerTxUrl(detail.latestActivation.transactionHash)}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "var(--ink-muted)", textDecoration: "underline" }}
+                          >
+                            {truncateMiddle(detail.latestActivation.transactionHash, 10, 8)}
+                          </a>
                           {detail.latestActivation.activationId !== null && ` · ID #${detail.latestActivation.activationId}`}
                         </>
                       )}
