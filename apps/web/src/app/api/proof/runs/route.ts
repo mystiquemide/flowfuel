@@ -12,15 +12,20 @@ export async function GET(): Promise<Response> {
     .filter((row) => row !== null)
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
   const names = new Map<string, string>();
+  const wallets = new Map<string, string>();
   await Promise.all([...new Set(rows.map((row) => row.clientId))].map(async (id) => {
     const client = await clients.getById(id);
-    if (client) names.set(id, client.displayName);
+    if (client) {
+      names.set(id, client.displayName);
+      wallets.set(id, client.walletAddress);
+    }
   }));
   return Response.json({
     runs: rows.map((run) => ({
       runId: run.id,
       clientId: run.clientId,
       clientName: names.get(run.clientId) ?? null,
+      clientWallet: wallets.get(run.clientId) ?? null,
       status: run.status,
       taskType: run.taskType,
       taskHash: run.taskHash,

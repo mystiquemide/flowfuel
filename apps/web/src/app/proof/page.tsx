@@ -189,7 +189,8 @@ function ProofInner() {
       })
     : [];
 
-  const funded = orderedRuns.find((r) => r.status === "succeeded");
+  const funded = orderedRuns.find((r) => r.status === "succeeded" && r.clientName === "Client A")
+    ?? orderedRuns.find((r) => r.status === "succeeded");
   const blocked = orderedRuns.find((r) => r.status !== "succeeded" && r.status !== "running");
 
   return (

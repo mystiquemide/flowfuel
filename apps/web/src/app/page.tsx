@@ -27,6 +27,7 @@ interface LiveRun {
   balanceAfter: string | null;
   costUsd: string | null;
   upstreamStatus: number | null;
+  clientWallet?: string | null;
 }
 
 const STATUS_PILL: Record<string, { label: string; color: string; bg: string }> = {
@@ -45,16 +46,20 @@ export default function Home() {
     let cancelled = false;
     void (async () => {
       try {
-        const [clientsRes, runsRes] = await Promise.all([
-          fetch("/api/clients", { cache: "no-store" }),
-          fetch("/api/runs?limit=25", { cache: "no-store" }),
-        ]);
-        if (!clientsRes.ok || !runsRes.ok) return;
-        const clientsBody = (await clientsRes.json()) as { clients: LiveClient[] };
+        const runsRes = await fetch("/api/proof/runs", { cache: "no-store" });
+        if (!runsRes.ok) return;
         const runsBody = (await runsRes.json()) as { runs: LiveRun[] };
         if (cancelled) return;
-        setLiveClients(clientsBody.clients);
         setLiveRuns(runsBody.runs);
+        setLiveClients(runsBody.runs.map((run) => ({
+          id: run.clientId,
+          displayName: run.clientName ?? "Proof client",
+          walletAddress: run.clientWallet ?? "unavailable",
+          status: run.status === "succeeded" ? "ready" : "unfunded",
+          activatedBalance: run.balanceAfter,
+          activatedUsed: run.costUsd,
+          totalSpentUsd: run.costUsd ?? "0.000000",
+        })));
       } catch {
         // Landing shows an honest empty state when live data is unreachable.
       }
