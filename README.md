@@ -92,7 +92,7 @@ flowchart LR
 ## Honest limitations
 
 - Unaudited. Do not point it at balances you cannot lose.
-- The demo instance is a development server behind a tunnel, not a hardened deployment.
+- The demo instance is a single self-hosted VM behind a Tailscale funnel, not a hardened multi-zone deployment.
 - All workflows share one bearer token today; per-workflow credentials are not built.
 - Exchange-path activations index slower than direct `activate()`: observed roughly a 45-minute lag before the balance credited. They do land, just not instantly.
 - Revoke is unit-tested; the destructive revoke path has not been exercised end-to-end on a live client.
