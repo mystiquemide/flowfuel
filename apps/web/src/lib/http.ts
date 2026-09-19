@@ -1,4 +1,5 @@
 import { FlowFuelError, type ApiError } from "@flowfuel/core";
+import { ZodError } from "zod";
 
 const HTTP_BY_CODE: Record<string, number> = {
   VALIDATION_FAILED: 400,
@@ -25,6 +26,15 @@ export function errorResponse(err: unknown): Response {
       status: HTTP_BY_CODE[err.code] ?? 500,
     });
   }
+  if (err instanceof ZodError) {
+    const body: ApiError = {
+      code: "VALIDATION_FAILED",
+      upstreamStatus: null,
+      action: "Fix the request fields and try again.",
+    };
+    return Response.json(body, { status: 400 });
+  }
+  console.error("[api] Unhandled error in API handler:", err);
   return Response.json(
     {
       code: "PROVIDER_FAILED",
