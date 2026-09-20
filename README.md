@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://flowfuel.midelabs.xyz"><strong>Live app</strong></a> ·
+  <a href="https://youtu.be/ir3JeK_S_xk"><strong>Demo video</strong></a> ·
   <a href="https://flowfuel.midelabs.xyz/proof"><strong>Proof</strong></a> ·
   <a href="docs/ARCHITECTURE.md"><strong>Architecture</strong></a> ·
   <a href="https://sellers.orbio.so/build"><strong>Orbio Build Week</strong></a>
